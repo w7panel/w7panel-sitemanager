@@ -1,0 +1,186 @@
+package site_manager
+
+import (
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"time"
+)
+
+type SuccessResp struct {
+	Data interface{} `json:"data"`
+}
+
+type ApiError struct {
+	ErrorMsg string `json:"error"`
+	Code     int    `json:"code"`
+}
+
+func (ve ApiError) Error() string {
+	return ve.ErrorMsg
+}
+
+type SiteManagerService struct {
+	BaseUrl string
+}
+
+type CreateEnvironmentReq struct {
+	Title              string `json:"title" binding:"required"`
+	Group              string `json:"group" binding:"required"`
+	Language           string `json:"language" binding:"required"`
+	Version            string `json:"version" binding:"required"`
+	AppName            string `json:"app_name" binding:"required"`
+	NginxVhostTemplate string `json:"nginx_vhost_template" binding:"required"`
+}
+type CreateEnvironmentResp struct {
+	Id int `json:"id"`
+}
+
+type CreateSiteReq struct {
+	Domain          []string `json:"domain" binding:"required"`
+	RootDir         string   `json:"root_dir" binding:"required"`
+	Remark          string   `json:"remark"`
+	EnvironmentId   int      `json:"environment_id" binding:"required"`
+	CodeDownloadUrl string   `json:"code_download_url"`
+}
+
+func (s SiteManagerService) CreateEnvironment(createReq CreateEnvironmentReq) (*CreateEnvironmentResp, error) {
+	payload, err := json.Marshal(createReq)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/environment/create", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		var apiError ApiError
+		err = json.Unmarshal(respBody, &apiError)
+		if err != nil {
+			return nil, err
+		}
+
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = 500
+		}
+
+		return nil, apiError
+	}
+
+	createResp := &CreateEnvironmentResp{}
+	successResp := &SuccessResp{
+		Data: createResp,
+	}
+
+	err = json.Unmarshal(respBody, successResp)
+	if err != nil {
+		return nil, err
+	}
+	return successResp.Data.(*CreateEnvironmentResp), nil
+}
+
+func (s SiteManagerService) CreateSite(createReq CreateSiteReq) error {
+	payload, err := json.Marshal(createReq)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/create", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		var apiError ApiError
+		err = json.Unmarshal(respBody, &apiError)
+		if err != nil {
+			return err
+		}
+
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = 500
+		}
+
+		return apiError
+	}
+
+	return nil
+}
+
+func (s SiteManagerService) DeleteEnvironment(id int) error {
+	payload, err := json.Marshal(map[string]int{"id": id})
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/environment/delete", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var apiError ApiError
+		err = json.Unmarshal(respBody, &apiError)
+		if err != nil {
+			return err
+		}
+
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = 500
+		}
+
+		return apiError
+	}
+
+	return nil
+}

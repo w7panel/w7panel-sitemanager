@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "site-manager-nginx.fullname" . }}
+  labels:
+    {{- include "site-manager-nginx.labels" . | nindent 4 }}
+  annotations:
+    title: 站点管理-nginx
+    w7.cc.app/title: 站点管理-nginx
+    w7.cc/create-svc: 'false'
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "site-manager-nginx.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "site-manager-nginx.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- $defaultAffinity := dict "podAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list (dict "labelSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" "site-manager" "app.kubernetes.io/instance" .Release.Name "w7.cc/identifie" .Release.Name)) "topologyKey" "kubernetes.io/hostname"))) }}
+      {{- $affinity := mergeOverwrite (deepCopy $defaultAffinity) (.Values.affinity | default dict) }}
+      serviceAccountName: {{ include "site-manager-nginx.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [ "sh", "-c" ]
+          args:
+            - |
+              CONF_PATH="{{.Values.global.NGINX_DIR}}/conf.d"
+              ETC_PATH="{{.Values.global.NGINX_DIR}}/etc"
+              mkdir -p "$CONF_PATH"
+              mkdir -p "$ETC_PATH"
+
+              # 复制 nginx 配置文件
+              if [ -d "$ETC_PATH" ] && [ "$(ls -A $ETC_PATH)" ]; then
+                echo "Copying nginx configs from $ETC_PATH to /etc/nginx/"
+                cp -r $ETC_PATH/* /etc/nginx/
+              else
+                echo "No config files found in $ETC_PATH"
+              fi
+
+              cp /etc/nginx/nginx.conf $ETC_PATH/
+
+              # 复制 nginx vhost 配置文件
+              if [ -d "$CONF_PATH" ] && [ "$(ls -A $CONF_PATH)" ]; then
+                echo "Copying nginx vhost configs from $CONF_PATH to /etc/nginx/conf.d"
+                cp -r $CONF_PATH/* /etc/nginx/conf.d/
+              else
+                echo "No config vhost files found in $CONF_PATH"
+              fi
+
+
+              DEFAULT_WORKER=2
+              NGINX_CONF=$(nginx -t 2>&1 | grep 'configuration file' | head -n1 | sed 's/.*file //;s/ .*//')
+              HOST_CPU=$(grep -c '^processor' /proc/cpuinfo)
+              FINAL_WORKER=${NGINX_WORKER_PROCESSES:-$DEFAULT_WORKER}
+              [ "$FINAL_WORKER" -eq "$HOST_CPU" ] && FINAL_WORKER=$DEFAULT_WORKER
+              sed -i "s/\(worker_processes\).*;/\1 $FINAL_WORKER;/" "$NGINX_CONF"
+
+              nginx -g 'daemon off;'
+          env:
+            - name: NGINX_WORKER_PROCESSES
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+                  divisor: '1'
+          volumeMounts:
+            - mountPath: {{.Values.global.NGINX_DIR}}
+              name: site-storage
+              subPath: nginx-dir
+            - mountPath: {{.Values.global.NGINX_WEB_DIR}}
+              name: site-storage
+              subPath: nginx-web-dir
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+            - name: https
+              containerPort: 443
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: site-storage
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-site-manager
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      affinity:
+        {{- toYaml $affinity | nindent 8 }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,11 @@
+relation:
+  - table: site
+    relate:
+      - table: site_setting
+        foreign_key: site_id
+        type: has_many
+      - table: environment
+        foreign_key: environment_id
+        type: belong_to
+  - table: site_setting
+  - table: environment

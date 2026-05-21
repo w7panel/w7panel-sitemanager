@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "site-manager.fullname" . }}
+  labels:
+    {{- include "site-manager.labels" . | nindent 4 }}
+  annotations:
+    title: 站点管理
+    w7.cc.app/title: 站点管理
+    w7.cc/create-svc: 'false'
+    w7.cc/need-build: ''
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "site-manager.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "site-manager.selectorLabels" . | nindent 8 }}
+        w7.cc/identifie: {{ .Release.Name }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "site-manager.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: SQLITE_DIR
+              value: /home/site-manager/db/
+            - name: K8S_APP_GROUP
+              value: {{.Release.Name}}
+            - name: K8S_VOLUME_NAME
+              value: {{ .Release.Name }}-site-manager
+            - name: NGINX_VHOST_DIR
+              value: {{.Values.global.NGINX_VHOST_DIR}}
+            - name: NGINX_WEB_DIR
+              value: {{.Values.global.NGINX_WEB_DIR}}
+            - name: ENVIRONMENT_SERVER_ROOT
+              value: {{.Values.global.SERVER_DIR}}
+          volumeMounts:
+            - mountPath: /home/site-manager/db
+              name: site-storage
+              subPath: db
+            - mountPath: {{.Values.global.NGINX_DIR}}
+              name: site-storage
+              subPath: nginx-dir
+            - mountPath: {{.Values.global.NGINX_WEB_DIR}}
+              name: site-storage
+              subPath: nginx-web-dir
+            - mountPath: {{.Values.global.SERVER_DIR}}
+              name: site-storage
+              subPath: server-dir
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: site-storage
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-site-manager
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
