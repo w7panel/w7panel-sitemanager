@@ -21,7 +21,10 @@ SOURCE_FILES=*.go
 
 IMAGE_TARGET ?= $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
-.PHONY: build-osx build build-windows makebuild dockerbuild helm-package publish dev test help
+.PHONY: tidy build-osx build build-windows makebuild dockerbuild helm-package publish dev test help
+
+tidy:
+	go mod tidy
 
 build-osx:
 	go build -o ${GO_BIN}/${PROJECT_NAME}_osx ${SOURCE_FILES}
@@ -30,7 +33,7 @@ build:
 build-windows:
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ${GO_BIN}/${PROJECT_NAME}.exe ${SOURCE_FILES}
 
-makebuild: build
+makebuild: tidy build
 
 dockerbuild:
 	docker build -t $(IMAGE_TARGET) .
