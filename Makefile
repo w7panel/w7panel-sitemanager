@@ -2,7 +2,6 @@ PROJECT_NAME=rangine
 
 GO_BASE=$(shell pwd)
 GO_BIN=$(GO_BASE)/bin
-FILE_NAME=$(shell date +%Y%m%d%H%M)
 LINUX_CC ?= x86_64-linux-musl-gcc
 LINUX_CXX ?= x86_64-linux-musl-g++
 CGO_CFLAGS ?= -D_LARGEFILE64_SOURCE
@@ -12,6 +11,8 @@ HELM_IMAGE_REPOSITORY := $(shell awk '/^image:/{flag=1; next} flag && /^[^[:spac
 HELM_IMAGE_TAG := $(shell awk '/^image:/{flag=1; next} flag && /^[^[:space:]]/{flag=0} flag && $$1=="tag:" {print $$2; exit}' $(HELM_VALUES_FILE))
 IMAGE_REPOSITORY ?= $(HELM_IMAGE_REPOSITORY)
 IMAGE_TAG ?= $(HELM_IMAGE_TAG)
+BETA_SUFFIX ?=
+BETA_IMAGE_TAG := $(IMAGE_TAG)-$(BETA_SUFFIX)
 HELM_CHART_VERSION ?= $(shell awk '$$1=="version:" {print $$2; exit}' $(HELM_CHART_DIR)/Chart.yaml)
 HELM_APP_VERSION ?= $(IMAGE_TAG)
 HELM_PACKAGE_IMAGE_TAG ?= $(IMAGE_TAG)
@@ -22,7 +23,7 @@ SOURCE_FILES=*.go
 
 IMAGE_TARGET ?= $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
-.PHONY: tidy  build build-windows makebuild dockerbuild helm-package publish dev test help
+.PHONY: tidy build build-windows makebuild dockerbuild helm-package publish beta dev test help
 
 tidy:
 	go mod tidy
@@ -66,6 +67,13 @@ publish: makebuild dockerbuild helm-package
 	@test -n "$(IMAGE_TAG)" || (echo "IMAGE_TAG is empty. Run from a git tag or pass IMAGE_TAG=vX.Y.Z."; exit 1)
 	docker push $(IMAGE_TARGET)
 
+beta:
+	@if [ -z "$(BETA_SUFFIX)" ]; then \
+		echo "BETA_SUFFIX is required, for example: make beta BETA_SUFFIX=beta1"; \
+		exit 1; \
+	fi
+	$(MAKE) publish IMAGE_TAG=$(BETA_IMAGE_TAG) HELM_APP_VERSION=$(BETA_IMAGE_TAG)
+
 dev:
 	go run ${SOURCE_FILES} server:start
 
@@ -76,3 +84,4 @@ help:
 	@echo "make - 编译 Go 代码, 生成二进制文件"
 	@echo "make dev - 在开发模式下编译 Go 代码"
 	@echo "make publish - 编译二进制、构建镜像、按 git tag 打镜像 tag，并打包 Helm"
+	@echo "make beta BETA_SUFFIX=beta1 - 使用当前镜像 tag 加手动后缀发布 beta，例如 $$(IMAGE_TAG)-beta1"
