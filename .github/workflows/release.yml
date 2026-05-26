@@ -78,7 +78,7 @@ jobs:
           ZPK_DOCKER_USERNAME: ${{ secrets.ZPK_DOCKER_USERNAME }}
           ZPK_DOCKER_PASSWORD: ${{ secrets.ZPK_DOCKER_PASSWORD }}
         run: |
-          sudo curl -L --fail -o /usr/local/bin/zpk https://github.com/w7panel/w7panel-zpk/releases/download/latest/w7-zpk_linux_amd64
+          sudo curl -L --fail -o /usr/local/bin/zpk https://github.com/w7panel/w7panel-zpk/releases/download/latest/zpk_linux_amd64
           sudo chmod +x /usr/local/bin/zpk
           
           set -euo pipefail
