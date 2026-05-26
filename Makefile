@@ -3,8 +3,6 @@ PROJECT_NAME=rangine
 GO_BASE=$(shell pwd)
 GO_BIN=$(GO_BASE)/bin
 FILE_NAME=$(shell date +%Y%m%d%H%M)
-LINUX_CC ?= x86_64-linux-musl-gcc
-LINUX_CXX ?= x86_64-linux-musl-g++
 HELM_CHART_DIR=charts
 HELM_VALUES_FILE := $(HELM_CHART_DIR)/values.yaml
 HELM_IMAGE_REPOSITORY := $(shell awk '/^image:/{flag=1; next} flag && /^[^[:space:]]/{flag=0} flag && $$1=="repository:" {print $$2; exit}' $(HELM_VALUES_FILE))
@@ -21,17 +19,13 @@ SOURCE_FILES=*.go
 
 IMAGE_TARGET ?= $(IMAGE_REPOSITORY):$(IMAGE_TAG)
 
-.PHONY: tidy build-osx build build-windows makebuild dockerbuild helm-package publish dev test help
+.PHONY: tidy  build build-windows makebuild dockerbuild helm-package publish dev test help
 
 tidy:
 	go mod tidy
 
-build-osx:
-	go build -o ${GO_BIN}/${PROJECT_NAME}_osx ${SOURCE_FILES}
 build:
-	CGO_ENABLED=1 GOARCH=amd64 GOOS=linux CC=$(LINUX_CC) CXX=$(LINUX_CXX) go build -gcflags=-trimpath=$$GOPATH -asmflags=-trimpath=$$GOPATH -ldflags "-w -s" -o builder/server ${SOURCE_FILES}
-build-windows:
-	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ${GO_BIN}/${PROJECT_NAME}.exe ${SOURCE_FILES}
+	CGO_ENABLED=1 GOARCH=amd64 GOOS=linux CC=x86_64-linux-musl-gcc CXX=x86_64-linux-musl-g++ go build -gcflags=-trimpath=$$GOPATH -asmflags=-trimpath=$$GOPATH -ldflags "-w -s" -o builder/server ${SOURCE_FILES}
 
 makebuild: tidy build
 
