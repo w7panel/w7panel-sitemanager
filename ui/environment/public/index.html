@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="" style="height:100%;">
+
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <link rel="icon" href="https://cdn.w7.cc/favicon.ico" type="image/x-icon">
+  <link rel="stylesheet" href="https://cdn.w7.cc/ued/font/w7/iconfont.css" />
+  <title>站点管理</title>
+  <style></style>
+  <script>
+    window.formatDate = function (date) {
+      if (!date) { return '' }
+      var d = new Date(date),
+        month = '' + (d.getMonth() + 1),
+        day = '' + d.getDate(),
+        year = d.getFullYear();
+
+      month = month.length < 2 ? '0' + month : month;
+      day = day.length < 2 ? '0' + day : day;
+
+      var hours = String(d.getHours());
+      var minutes = String(d.getMinutes());
+      var seconds = String(d.getSeconds());
+
+      hours = hours.length < 2 ? '0' + hours : hours;
+      minutes = minutes.length < 2 ? '0' + minutes : minutes;
+      seconds = seconds.length < 2 ? '0' + seconds : seconds;
+      return [year, month, day].join('-') + ' ' + [hours, minutes, seconds].join(':');
+    }
+  </script>
+</head>
+
+<body style="height:calc(100vh - 160px);min-height: 600px;background-color: #fff;position: relative">
+  <noscript>
+    <strong>We're sorry but <%= htmlWebpackPlugin.options.title %> doesn't work properly without JavaScript enabled.
+        Please enable it to continue.</strong>
+  </noscript>
+  <div id="site" style="display:flex; flex-direction:column; height:100%; overflow:auto;"></div>
+</body>
+
+</html>
