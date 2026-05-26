@@ -11,8 +11,8 @@ jobs:
     permissions:
       contents: read
     env:
-      ZPK_HOST: zpk.idc.w7.com
-      ZPK_ARTIFACT: w7-zpkv5
+      ZPK_HOST: zpk.w7.cc
+      ZPK_ARTIFACT: w7-sitemanager
       DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY || 'zpk.w7.cc' }}
       DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
