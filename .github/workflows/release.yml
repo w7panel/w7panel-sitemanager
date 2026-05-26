@@ -99,7 +99,7 @@ jobs:
           fi
 
           zpk login --username="${ZPK_DOCKER_USERNAME}" --password="${ZPK_DOCKER_PASSWORD}" --host="${ZPK_HOST}"
-          zpk use --name="${ZPK_ARTIFACT}"
+          zpk use "${ZPK_ARTIFACT}"
           zpk attach add --path="${HELM_PACKAGE}" --type=helm
           zpk attach add --path="frontend.zip" --type=frontend
           zpk push
