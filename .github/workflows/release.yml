@@ -31,8 +31,32 @@ jobs:
       - name: Setup Helm
         uses: azure/setup-helm@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.20.8
+          cache: npm
+          cache-dependency-path: ui/site/package-lock.json
+
       - name: Install build tools
         run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build frontend
+        working-directory: ui/site
+        run: |
+          npm install
+          npm run build
+
+      - name: Package frontend
+        run: |
+          set -euo pipefail
+
+          if [ ! -d ui/site/dist ]; then
+            echo "frontend dist not found under ui/site/dist"
+            exit 1
+          fi
+
+          tar -czf frontend.tar.gz -C ui/site/dist .
 
       - name: Docker login
         if: env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != ''
@@ -72,8 +96,9 @@ jobs:
             echo "helm package not found under charts/"
             exit 1
           fi
-          
+
           zpk login --username="${ZPK_DOCKER_USERNAME}" --password="${ZPK_DOCKER_PASSWORD}" --host="${ZPK_HOST}"
           zpk use --name="${ZPK_ARTIFACT}"
           zpk attach add --path="${HELM_PACKAGE}" --type=helm
+          zpk attach add --path="frontend.tar.gz" --type=frontend
           zpk push
