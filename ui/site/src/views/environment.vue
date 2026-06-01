@@ -384,7 +384,7 @@ export default {
       })
     },
     installEnvironment() {
-      window.open(`/dialog/store-install?path=https://zpk.w7.cc/zpk/respo/info/${this.type}&${this.type}=%7B%22pvcName%22%3A%22${window.$wujie?.props?.appgroup || window.$wujie?.props?.releaseName}-site-manager%22%7D`)
+      window.$wujie?.bus.$emit('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.type}`)
       return new Promise((res) => {
         let timer = null
         timer = setInterval(() => {
