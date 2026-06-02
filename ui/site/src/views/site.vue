@@ -348,7 +348,7 @@ export default {
       this.getData(1)
     },
     installEnvironment() {
-      window.open(`/dialog/store-install?path=https://zpk.w7.cc/zpk/respo/info/${this.activeLang.identifie}&${this.activeLang.identifie}=%7B%22pvcName%22%3A%22${window.$wujie?.props?.group || window.$wujie?.props?.releaseName}-site-manager%22%7D`)
+      window.$wujie?.bus.$emit('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.activeLang.identifie}`)
       let timer = null
       timer = setInterval(() => {
         this.getAppConfig(this.activeLang.identifie).then(res => {
