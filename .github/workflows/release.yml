@@ -3,19 +3,19 @@ name: Release
 on:
   push:
     tags:
-      - "*"
+      - "v*"
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
+      packages: write
     env:
       ZPK_HOST: zpk.w7.cc
       ZPK_ARTIFACT: w7-sitemanager
-      DOCKER_REGISTRY: ${{ secrets.DOCKER_REGISTRY || 'zpk.w7.cc' }}
-      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      IMAGE_PUSH_REGISTRY: ${{ vars.IMAGE_PUSH_REGISTRY || 'ghcr.io' }}
+      HELM_PACKAGE_IMAGE_REGISTRY: ${{ vars.HELM_PACKAGE_IMAGE_REGISTRY || 'ghcr.registry.cdn.w7.cc' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,19 +59,30 @@ jobs:
           cd ui/site/dist
           zip -r ../../../frontend.zip .
 
-      - name: Docker login
-        if: env.DOCKER_USERNAME != '' && env.DOCKER_PASSWORD != ''
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ env.DOCKER_USERNAME }}
-          password: ${{ env.DOCKER_PASSWORD }}
+          registry: ${{ env.IMAGE_PUSH_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish image and Helm package
         run: |
+          set -euo pipefail
+
           RELEASE_TAG="${GITHUB_REF_NAME}"
           RELEASE_VERSION="${RELEASE_TAG#v}"
-          make publish IMAGE_TAG="${RELEASE_TAG}" HELM_CHART_VERSION="${RELEASE_VERSION}" HELM_APP_VERSION="${RELEASE_TAG}"
+          IMAGE_NAME="${GITHUB_REPOSITORY,,}"
+          IMAGE_REPOSITORY="${IMAGE_PUSH_REGISTRY}/${IMAGE_NAME}"
+          HELM_PACKAGE_IMAGE_REPOSITORY="${HELM_PACKAGE_IMAGE_REGISTRY}/${IMAGE_NAME}"
+
+          make publish \
+            IMAGE_REPOSITORY="${IMAGE_REPOSITORY}" \
+            IMAGE_TAG="${RELEASE_TAG}" \
+            HELM_PACKAGE_IMAGE_REPOSITORY="${HELM_PACKAGE_IMAGE_REPOSITORY}" \
+            HELM_PACKAGE_IMAGE_TAG="${RELEASE_TAG}" \
+            HELM_CHART_VERSION="${RELEASE_VERSION}" \
+            HELM_APP_VERSION="${RELEASE_TAG}"
 
       - name: Push zpk
         env:

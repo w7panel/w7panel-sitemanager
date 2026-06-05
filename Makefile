@@ -15,6 +15,7 @@ BETA_SUFFIX ?=
 BETA_IMAGE_TAG := $(IMAGE_TAG)-$(BETA_SUFFIX)
 HELM_CHART_VERSION ?= $(shell awk '$$1=="version:" {print $$2; exit}' $(HELM_CHART_DIR)/Chart.yaml)
 HELM_APP_VERSION ?= $(IMAGE_TAG)
+HELM_PACKAGE_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY)
 HELM_PACKAGE_IMAGE_TAG ?= $(IMAGE_TAG)
 HELM_PACKAGE ?= $(HELM_CHART_DIR)/site-manager-$(HELM_CHART_VERSION).tgz
 HELM_NGINX_PACKAGE ?= $(HELM_CHART_DIR)/charts/site-manager-nginx-$(HELM_CHART_VERSION).tgz
@@ -37,6 +38,7 @@ dockerbuild:
 	docker build -t $(IMAGE_TARGET) .
 
 helm-package:
+	@test -n "$(HELM_PACKAGE_IMAGE_REPOSITORY)" || (echo "HELM_PACKAGE_IMAGE_REPOSITORY is empty. Pass HELM_PACKAGE_IMAGE_REPOSITORY=registry.example.com/ns/image."; exit 1)
 	@test -n "$(HELM_PACKAGE_IMAGE_TAG)" || (echo "HELM_PACKAGE_IMAGE_TAG is empty. Pass HELM_PACKAGE_IMAGE_TAG=vX.Y.Z."; exit 1)
 	@test -n "$(HELM_CHART_VERSION)" || (echo "HELM_CHART_VERSION is empty."; exit 1)
 	@test -n "$(HELM_APP_VERSION)" || (echo "HELM_APP_VERSION is empty."; exit 1)
@@ -59,6 +61,7 @@ helm-package:
 	perl -0pi -e 's/^version:\s*.*/version: $(HELM_CHART_VERSION)/m; s/^appVersion:\s*.*/appVersion: "$(HELM_APP_VERSION)"/m' $(HELM_CHART_DIR)/Chart.yaml; \
 	perl -0pi -e 's/(- name:\s*site-manager-nginx\s*\n\s*version:\s*).*/$${1}$(HELM_CHART_VERSION)/m' $(HELM_CHART_DIR)/Chart.yaml; \
 	perl -0pi -e 's/^version:\s*.*/version: $(HELM_CHART_VERSION)/m; s/^appVersion:\s*.*/appVersion: "$(HELM_APP_VERSION)"/m' $(HELM_CHART_DIR)/charts/nginx/Chart.yaml; \
+	perl -0pi -e 's#^(\s*repository:\s*).*#$${1}$(HELM_PACKAGE_IMAGE_REPOSITORY)#m' $(HELM_CHART_DIR)/values.yaml; \
 	perl -0pi -e 's/^(\s*tag:\s*).*/$${1}$(HELM_PACKAGE_IMAGE_TAG)/m' $(HELM_CHART_DIR)/values.yaml; \
 	helm dependency build --skip-refresh $(HELM_CHART_DIR); \
 	helm package $(HELM_CHART_DIR) --destination $(HELM_CHART_DIR)
