@@ -528,7 +528,7 @@ export default {
         group
       }).then(res => {
         if (res.data.data.total === 0) {
-          panelAxios.delete("/apis/appgroup.w7.cc/v1alpha1/namespaces/default/appgroups/" + group.replace(/_/g, '-'))
+          panelAxios.delete("/apis/appgroup.w7.com/v1alpha1/namespaces/default/appgroups/" + group.replace(/_/g, '-'))
         }
       })
     },
