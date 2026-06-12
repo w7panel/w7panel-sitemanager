@@ -220,7 +220,6 @@ export default {
         iniSettingDefs.forEach(item => {
             iniSettings[item.key] = item.default || ''
         })
-        const isPHP = window.$wujie?.props?.appgroup?.includes('php')
 
         const defaultFpmSettings = {
             access_log: '/var/log/php-fpm/access.log',
@@ -241,7 +240,7 @@ export default {
             containerName: '',
             podName: '',
             imageName: '',
-            tab: isPHP ? 'extensions' : 'custom_commands',
+            tab: 'custom_commands',
             content: '',
             editId: 0,
             hostIP: '',
@@ -280,7 +279,7 @@ export default {
             customExtensions: [],
             appName: '',
             customCommands: '',
-            isPHP: isPHP,
+            isPHP: false,
             podPollTimer: null,
             podPollStartedAt: 0,
             podPollTimeoutMs: 180000,
@@ -358,6 +357,8 @@ export default {
         getAppYamlInfo() {
             return panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${this.appName}`).then(res => {
                 this.allExtensions = res.data.spec.template.metadata.annotations['w7.cc/php_extensions']
+                this.isPHP = res.data.spec.template.metadata.annotations['w7.cc/image_language'] === 'php'
+                this.tab = this.isPHP ? 'extensions' : 'custom_commands'
             })
         },
         saveCustomCommands() {

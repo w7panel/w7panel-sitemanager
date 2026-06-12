@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-f2" style="min-height:100%;">
+  <div style="min-height:100%;">
     <div>
       <div>
         <div class="bg-white bg-padding pb-24" style="border-top:1px solid #EEEEEE;">
@@ -96,7 +96,7 @@
         </div>
       </div>
     </div>
-    <el-dialog v-model="visible" :title="editId ? '编辑站点' : '添加站点'" :width="editId ? 900 : 600">
+    <el-dialog v-model="visible" :title="editId ? '编辑站点' : '添加站点'" :width="editId ? 900 : 700">
       <div class="df" style="overflow: hidden;">
         <div class="w-200" style="margin-right: 20px" v-if="editId">
           <el-tabs style="height: 100%" tab-position="left" @tab-change="handleTabChange" v-model="tab">
