@@ -23,48 +23,106 @@ if command -v apk >/dev/null 2>&1; then
   echo "Asia/Shanghai" > /etc/timezone
 fi
 
+LOCAL_EXTENSION_SRC_DIR=/tmp/php-extension-src
+USE_LOCAL_EXTENSION_SOURCES=0
+case "$PHP_VERSION" in
+  8.0|8.1)
+    USE_LOCAL_EXTENSION_SOURCES=1
+    ;;
+esac
+
+extract_local_extension_source() {
+  package="$1"
+  source_dir="$LOCAL_EXTENSION_SRC_DIR/${package%.tar.gz}"
+  extract_dir="$source_dir.extract"
+
+  rm -rf "$source_dir" "$extract_dir"
+  mkdir -p "$source_dir" "$extract_dir"
+
+  echo "download PHP extension source: ${package%.tar.gz}"
+  curl -fsSL --retry 5 --retry-delay 2 \
+    -o "$LOCAL_EXTENSION_SRC_DIR/$package" \
+    "https://pecl.php.net/get/${package%.tar.gz}.tgz"
+
+  tar -xzf "$LOCAL_EXTENSION_SRC_DIR/$package" -C "$extract_dir"
+  if [ -f "$extract_dir/package.xml" ]; then
+    cp -a "$extract_dir/." "$source_dir/"
+    top_dir="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    if [ -n "$top_dir" ]; then
+      cp -a "$top_dir/." "$source_dir/"
+    fi
+  else
+    top_dir="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    cp -a "$top_dir/." "$source_dir/"
+  fi
+  rm -rf "$extract_dir" "$LOCAL_EXTENSION_SRC_DIR/$package"
+}
+
+if [ "$USE_LOCAL_EXTENSION_SOURCES" = 1 ]; then
+  for package in \
+    igbinary-3.2.16.tar.gz \
+    mcrypt-1.0.9.tar.gz \
+    redis-6.3.0.tar.gz \
+    yaml-2.3.0.tar.gz \
+    imagick-3.7.0.tar.gz \
+    memcached-3.4.0.tar.gz \
+    swoole-5.1.8.tar.gz
+  do
+    extract_local_extension_source "$package"
+  done
+fi
+
 INSTALLABLE_REQUIRED_EXTENSIONS="
 bcmath
 bz2
 exif
 gd
-igbinary
-mcrypt
-memcached
 mysqli
 pcntl
 pdo_mysql
-redis
 sockets
 sourceguardian
 sysvmsg
 sysvsem
 sysvshm
 xsl
-yaml
 zip
 "
 
-VERSION_SPECIFIC_EXTENSIONS="imagick-3.7.0"
+if [ "$USE_LOCAL_EXTENSION_SOURCES" = 1 ]; then
+  INSTALLABLE_REQUIRED_EXTENSIONS="$INSTALLABLE_REQUIRED_EXTENSIONS
+/tmp/php-extension-src/igbinary-3.2.16
+/tmp/php-extension-src/mcrypt-1.0.9
+/tmp/php-extension-src/redis-6.3.0
+/tmp/php-extension-src/yaml-2.3.0
+"
+  VERSION_SPECIFIC_EXTENSIONS="
+/tmp/php-extension-src/imagick-3.7.0
+/tmp/php-extension-src/memcached-3.4.0
+/tmp/php-extension-src/swoole-5.1.8
+"
+else
+  INSTALLABLE_REQUIRED_EXTENSIONS="$INSTALLABLE_REQUIRED_EXTENSIONS
+igbinary
+mcrypt
+redis
+yaml
+"
+  VERSION_SPECIFIC_EXTENSIONS="
+imagick
+memcached
+swoole
+"
+fi
 
 case "$PHP_VERSION" in
-  8.*)
+  8.1)
+    ;;
+  7.*|8.*)
     VERSION_SPECIFIC_EXTENSIONS="$VERSION_SPECIFIC_EXTENSIONS apcu-5.1.28"
     ;;
   *)
     VERSION_SPECIFIC_EXTENSIONS="$VERSION_SPECIFIC_EXTENSIONS apcu"
-    ;;
-esac
-
-case "$PHP_VERSION" in
-  8.0)
-    VERSION_SPECIFIC_EXTENSIONS="$VERSION_SPECIFIC_EXTENSIONS swoole-5.1.8"
-    ;;
-  8.1)
-    VERSION_SPECIFIC_EXTENSIONS="$VERSION_SPECIFIC_EXTENSIONS swoole-6.1.8"
-    ;;
-  *)
-    VERSION_SPECIFIC_EXTENSIONS="$VERSION_SPECIFIC_EXTENSIONS swoole"
     ;;
 esac
 
@@ -96,11 +154,11 @@ case "$PHP_VERSION" in
 esac
 
 is_installed_extension() {
-  extension="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-  extension="${extension%%-*}"
+  checked_extension="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  checked_extension="${checked_extension%%-*}"
   modules="$(php -m | tr '[:upper:]' '[:lower:]')"
 
-  case "$extension" in
+  case "$checked_extension" in
     ioncube_loader)
       module_name="ioncube loader"
       ;;
@@ -114,7 +172,7 @@ is_installed_extension() {
       return 1
       ;;
     *)
-      module_name="$extension"
+      module_name="$checked_extension"
       ;;
   esac
 

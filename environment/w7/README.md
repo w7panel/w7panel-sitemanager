@@ -48,6 +48,13 @@ cd environment/w7
 ./build-all.sh PUSH=1
 ```
 
+Build one version:
+
+```sh
+cd environment/w7
+./build-all.sh version=8.1
+```
+
 Override versions or image repository:
 
 ```sh
@@ -69,18 +76,16 @@ Timezone is configured as `Asia/Shanghai` by writing `/etc/localtime` and `/etc/
 The base extension list is:
 
 ```text
-bcmath bz2 exif gd igbinary mcrypt memcached mysqli pcntl pdo_mysql redis sockets sourceguardian sysvmsg sysvsem sysvshm xsl yaml zip
+bcmath bz2 exif gd igbinary mcrypt mysqli pcntl pdo_mysql redis sockets sourceguardian sysvmsg sysvsem sysvshm xsl yaml zip
 ```
 
 Version-specific additions:
 
 ```text
-All versions: imagick-3.7.0
-PHP 8.x: apcu-5.1.28
+PHP 8.0/8.1: pinned PECL source versions downloaded during build for igbinary, mcrypt, redis, yaml, imagick, memcached, swoole
+PHP 5.6/7.x: installer-selected compatible PECL versions for igbinary, mcrypt, redis, yaml, imagick, memcached, swoole
+PHP 7.x/8.x except PHP 8.1: apcu-5.1.28
 All other versions: apcu
-PHP 8.0: swoole-5.1.8
-PHP 8.1: swoole-6.1.8
-All other versions: swoole
 PHP 5.6/7.0/7.1: sodium
 PHP 5.6/7.0/7.1/7.2/7.3/7.4/8.0: opcache
 PHP 5.6/7.0: @fix_letsencrypt
@@ -95,7 +100,7 @@ Images inherit the official `php:<version>-fpm-alpine` entrypoint and command.
 
 No custom start script is installed.
 
-The build copies `install-php-extensions` and `install-w7-php-extensions` only for the build step. Both files are deleted after extension installation.
+The build copies `install-php-extensions` and `install-w7-php-extensions` only for the build step. Both files are removed after extension installation.
 
 The Dockerfile does not run module verification during build.
 
@@ -109,7 +114,9 @@ docker run --rm zpk.idc.w7.com/public/php:7.4-fpm-alpine php -m
 
 ## Notes
 
-The Dockerfile pins `mlocati/php-extension-installer` to `2.10.0` to reduce compatibility drift while building old PHP versions.
+The Dockerfile uses the bundled `common/install-php-extensions` script to reduce compatibility drift while building old PHP versions.
+
+PHP 8.0/8.1 builds download pinned PECL source releases at build time instead of relying on PECL version resolution. Older PHP versions let the installer select compatible releases because several pinned releases require newer PHP versions.
 
 The current `docker-php-extension-installer` README documents Alpine support from Alpine 3.9 / PHP 7.1 upward. The official `php:5.6-fpm-alpine` and `php:7.0-fpm-alpine` images use older Alpine versions, so those versions are best-effort.
 
