@@ -235,14 +235,23 @@ func (c Site) Delete(ctx *gin.Context) {
 
 func (c Site) Info(ctx *gin.Context) {
 	type ParamsValidate struct {
-		Id int `json:"id" binding:"required"`
+		Id     int    `json:"id"`
+		Domain string `json:"domain"`
 	}
 	params := ParamsValidate{}
 	if !c.Validate(ctx, &params) {
 		return
 	}
 
-	curSite := logic.Site{}.GetSiteById(int32(params.Id))
+	var curSite *entity.Site
+	if params.Id > 0 {
+		curSite = logic.Site{}.GetSiteById(int32(params.Id))
+	} else if params.Domain != "" {
+		curSite, _ = dao.Q.Site.Where(dao.Q.Site.Domain.Eq(params.Domain)).First()
+	} else {
+		c.JsonResponseWithServerError(ctx, errors.New("site id or domain required"))
+		return
+	}
 	if curSite == nil {
 		c.JsonResponseWithServerError(ctx, errors.New("site not found"))
 		return

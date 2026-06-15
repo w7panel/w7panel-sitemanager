@@ -86,7 +86,34 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	}
 
 	if argsValue.Operation == "upgrade" {
-		err := getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
+		siteInfo, err := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
+			Domain: argsValue.Domain,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		if !isSameSiteEnvironment(siteInfo.SiteEnvironment) {
+			environment, info, err := createEnvironmentForSite(commands, false)
+			if err != nil {
+				panic(err)
+			}
+
+			err = getSiteManagerService().UpdateSite(site_manager.UpdateSiteReq{
+				Id:            siteInfo.Site.Id,
+				Domain:        strings.Split(siteInfo.Site.Domain, ","),
+				RootDir:       siteInfo.Site.RootDir,
+				Remark:        siteInfo.Site.Remark,
+				EnvironmentId: environment.Id,
+			})
+			if err != nil {
+				cleanupCreatedEnvironment(environment.Id, info)
+				panic(err)
+			}
+			slog.Info("站点环境更新成功", "domain", argsValue.Domain, "environment_id", environment.Id)
+		}
+
+		err = getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
 			Domain:          argsValue.Domain,
 			CodeDownloadUrl: argsValue.CodeDownloadUrl,
 		})
@@ -102,31 +129,12 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	info, err := createSiteK8sResource(strings.ReplaceAll(argsValue.EnvironmentName, "_", "-"), argsValue.EnvironmentVersion, commands)
+	environment, info, err := createEnvironmentForSite(commands, true)
 	if err != nil {
 		panic(err)
 	}
 
-	environment, err := getSiteManagerService().CreateEnvironment(site_manager.CreateEnvironmentReq{
-		Title:              argsValue.EnvironmentTitle,
-		Language:           argsValue.EnvironmentLanguage,
-		Version:            argsValue.EnvironmentVersion,
-		Group:              strings.ReplaceAll(argsValue.EnvironmentName, "_", "-"),
-		AppName:            info.Name,
-		NginxVhostTemplate: info.NginxTemplate,
-	})
-	if err != nil {
-		err1 := getPanelService().DeleteDeploy(info.Name)
-		if err1 != nil {
-			slog.Error(err1.Error())
-		}
-		err1 = getPanelService().DeleteIngress(info.IngressName)
-		if err1 != nil {
-			slog.Error(err1.Error())
-		}
-		panic(err)
-	}
-
+	//触发 info 接口， 才能从 downloadurl 下载文件
 	zpkService := zpk.ZpkService{
 		BaseUrl: urlInfo.Scheme + "://" + urlInfo.Host,
 	}
@@ -162,6 +170,59 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	slog.Info("站点安装成功", "params", argsValue)
 }
 
+func createEnvironmentForSite(commands []string, createIngress bool) (*site_manager.CreateEnvironmentResp, *DeployInfo, error) {
+	info, err := createSiteK8sResource(getDesiredEnvironmentGroup(), argsValue.EnvironmentVersion, commands, createIngress)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	environment, err := getSiteManagerService().CreateEnvironment(site_manager.CreateEnvironmentReq{
+		Title:              argsValue.EnvironmentTitle,
+		Language:           argsValue.EnvironmentLanguage,
+		Version:            argsValue.EnvironmentVersion,
+		Group:              getDesiredEnvironmentGroup(),
+		AppName:            info.Name,
+		NginxVhostTemplate: info.NginxTemplate,
+	})
+	if err != nil {
+		cleanupCreatedEnvironment(0, info)
+		return nil, nil, err
+	}
+
+	return environment, info, nil
+}
+
+func cleanupCreatedEnvironment(environmentId int, info *DeployInfo) {
+	if environmentId > 0 {
+		if err := getSiteManagerService().DeleteEnvironment(environmentId); err != nil {
+			slog.Error(err.Error())
+		}
+	}
+	if info == nil {
+		return
+	}
+	if err := getPanelService().DeleteDeploy(info.Name); err != nil {
+		slog.Error(err.Error())
+	}
+	if info.IngressName != "" {
+		if err := getPanelService().DeleteIngress(info.IngressName); err != nil {
+			slog.Error(err.Error())
+		}
+	}
+}
+
+func isSameSiteEnvironment(environment site_manager.SiteEnvironmentResp) bool {
+	if environment.Language != argsValue.EnvironmentLanguage || environment.Version != argsValue.EnvironmentVersion {
+		return false
+	}
+
+	return environment.AppName == getDesiredEnvironmentGroup()
+}
+
+func getDesiredEnvironmentGroup() string {
+	return strings.ReplaceAll(argsValue.EnvironmentName, "_", "-")
+}
+
 func getSiteManagerService() site_manager.SiteManagerService {
 	return site_manager.SiteManagerService{
 		BaseUrl: "http://w7-sitemanager-site-manager.default.svc.cluster.local:8000",
@@ -175,7 +236,7 @@ func getPanelService() w7panel.W7PanelService {
 	}
 }
 
-func createSiteK8sResource(appName, version string, command []string) (*DeployInfo, error) {
+func createSiteK8sResource(appName, version string, command []string, createIngress bool) (*DeployInfo, error) {
 	sourceDeployInfo, err := getPanelService().QueryDeploy(appName)
 	if err != nil {
 		return nil, err
@@ -293,6 +354,27 @@ func createSiteK8sResource(appName, version string, command []string) (*DeployIn
 		return nil, err
 	}
 
+	if !createIngress {
+		return &DeployInfo{
+			Name:          newName,
+			NginxTemplate: nginxTemplate,
+		}, nil
+	}
+
+	ingressName, err := createSiteIngress()
+	if err != nil {
+		getPanelService().DeleteDeploy(newName)
+		return nil, err
+	}
+
+	return &DeployInfo{
+		Name:          newName,
+		NginxTemplate: nginxTemplate,
+		IngressName:   ingressName,
+	}, nil
+}
+
+func createSiteIngress() (string, error) {
 	ingressName := "ing-" + strings.ToLower(helper.GetRandomStringNotContainsNumber(12))
 	pathType := v2.PathTypePrefix
 	ingressInfo := v2.Ingress{
@@ -353,17 +435,12 @@ func createSiteK8sResource(appName, version string, command []string) (*DeployIn
 		}
 	}
 
-	err = getPanelService().CreateIngress(ingressInfo)
+	err := getPanelService().CreateIngress(ingressInfo)
 	if err != nil {
-		getPanelService().DeleteDeploy(newName)
-		return nil, err
+		return "", err
 	}
 
-	return &DeployInfo{
-		Name:          newName,
-		NginxTemplate: nginxTemplate,
-		IngressName:   ingressName,
-	}, nil
+	return ingressName, nil
 }
 
 func getVersionIdentifie(appName, version string) string {
