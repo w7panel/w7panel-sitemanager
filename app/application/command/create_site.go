@@ -40,6 +40,7 @@ type appCommandArgs struct {
 	EnvironmentName     string
 	EnvironmentVersion  string
 	EnvironmentLanguage string
+	Operation           string
 	CodeDownloadUrl     string
 	Cmd                 string
 	Domain              string
@@ -64,6 +65,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.EnvironmentName, "name", "", "environment name")
 	cmd.Flags().StringVar(&argsValue.EnvironmentLanguage, "language", "", "environment language")
 	cmd.Flags().StringVar(&argsValue.EnvironmentVersion, "version", "", "environment version")
+	cmd.Flags().StringVar(&argsValue.Operation, "operation", "install", "operation type")
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
 	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Cmd, "cmd", "", "command")
@@ -81,6 +83,18 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		if err != nil {
 			panic(err)
 		}
+	}
+
+	if argsValue.Operation == "upgrade" {
+		err := getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
+			Domain:          argsValue.Domain,
+			CodeDownloadUrl: argsValue.CodeDownloadUrl,
+		})
+		if err != nil {
+			panic(err)
+		}
+		slog.Info("站点代码更新成功", "params", argsValue)
+		return
 	}
 
 	urlInfo, err := url.Parse(argsValue.CodeDownloadUrl)

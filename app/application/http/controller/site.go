@@ -163,6 +163,31 @@ func (c Site) Update(ctx *gin.Context) {
 	})
 }
 
+func (c Site) UpdateCode(ctx *gin.Context) {
+	type ParamsValidate struct {
+		Domain          string `json:"domain" binding:"required"`
+		CodeDownloadUrl string `json:"code_download_url" binding:"required"`
+	}
+	params := ParamsValidate{}
+	if !c.Validate(ctx, &params) {
+		return
+	}
+
+	curSite, _ := dao.Q.Site.Where(dao.Q.Site.Domain.Eq(params.Domain)).First()
+	if curSite == nil {
+		c.JsonResponseWithServerError(ctx, errors.New("site not found"))
+		return
+	}
+
+	err := logic.Site{}.InstallSiteCode(*curSite, params.CodeDownloadUrl)
+	if err != nil {
+		c.JsonResponseWithServerError(ctx, err)
+		return
+	}
+
+	c.JsonSuccessResponse(ctx)
+}
+
 func (c Site) Delete(ctx *gin.Context) {
 	type ParamsValidate struct {
 		Id                int  `json:"id" binding:"required"`

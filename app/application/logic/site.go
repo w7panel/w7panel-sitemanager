@@ -24,7 +24,7 @@ func (l Site) GetSiteById(id int32) *entity.Site {
 	return curSite
 }
 
-func (l Site) InstallSite(site entity.Site, codeDownloadUtl string) error {
+func (l Site) InstallSite(site entity.Site, codeDownloadUrl string) error {
 	environment := SiteEnvironment{}.GetEnvironmentById(site.EnvironmentID)
 	if environment == nil {
 		return errors.New("站点环境异常")
@@ -34,10 +34,13 @@ func (l Site) InstallSite(site entity.Site, codeDownloadUtl string) error {
 		return err
 	}
 
+	return l.InstallSiteCode(site, codeDownloadUrl)
+}
+
+func (l Site) InstallSiteCode(site entity.Site, codeDownloadUrl string) error {
 	absoluteRootDir := SiteSetting{}.GetAbsoluteSiteRootDir(site.RootDir)
 	helper.CreateDirIfNotExist(absoluteRootDir, os.ModePerm)
-
-	if codeDownloadUtl == "" {
+	if codeDownloadUrl == "" {
 		defaultFilePath := filepath.Join(absoluteRootDir, "index.html")
 		if helper.FileExists(defaultFilePath) {
 			return nil
@@ -45,11 +48,11 @@ func (l Site) InstallSite(site entity.Site, codeDownloadUtl string) error {
 		return os.WriteFile(defaultFilePath, []byte(""), os.ModePerm)
 	} else {
 		savePath := filepath.Join(absoluteRootDir, helper.GetRandomString(8)+"_code.zip")
-		err = helper.DownloadFile(codeDownloadUtl, savePath)
+		err := helper.DownloadFile(codeDownloadUrl, savePath)
 		if err != nil {
 			return err
 		}
-		slog.Info("download code_download_url:", "path", codeDownloadUtl)
+		slog.Info("download code_download_url:", "path", codeDownloadUrl)
 		defer os.Remove(savePath)
 		err = helper.Unzip(savePath, absoluteRootDir)
 		if err != nil {
