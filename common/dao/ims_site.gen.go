@@ -32,6 +32,7 @@ func newSite(db *gorm.DB, opts ...gen.DOOption) site {
 	_site.RootDir = field.NewString(tableName, "root_dir")
 	_site.Remark = field.NewString(tableName, "remark")
 	_site.EnvironmentID = field.NewInt32(tableName, "environment_id")
+	_site.Ext = field.NewField(tableName, "ext")
 	_site.CreatedAt = field.NewTime(tableName, "created_at")
 	_site.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_site.DeletedAt = field.NewField(tableName, "deleted_at")
@@ -61,6 +62,7 @@ type site struct {
 	RootDir       field.String
 	Remark        field.String
 	EnvironmentID field.Int32
+	Ext           field.Field
 	CreatedAt     field.Time
 	UpdatedAt     field.Time
 	DeletedAt     field.Field
@@ -88,6 +90,7 @@ func (s *site) updateTableName(table string) *site {
 	s.RootDir = field.NewString(table, "root_dir")
 	s.Remark = field.NewString(table, "remark")
 	s.EnvironmentID = field.NewInt32(table, "environment_id")
+	s.Ext = field.NewField(table, "ext")
 	s.CreatedAt = field.NewTime(table, "created_at")
 	s.UpdatedAt = field.NewTime(table, "updated_at")
 	s.DeletedAt = field.NewField(table, "deleted_at")
@@ -107,12 +110,13 @@ func (s *site) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (s *site) fillFieldMap() {
-	s.fieldMap = make(map[string]field.Expr, 10)
+	s.fieldMap = make(map[string]field.Expr, 11)
 	s.fieldMap["id"] = s.ID
 	s.fieldMap["domain"] = s.Domain
 	s.fieldMap["root_dir"] = s.RootDir
 	s.fieldMap["remark"] = s.Remark
 	s.fieldMap["environment_id"] = s.EnvironmentID
+	s.fieldMap["ext"] = s.Ext
 	s.fieldMap["created_at"] = s.CreatedAt
 	s.fieldMap["updated_at"] = s.UpdatedAt
 	s.fieldMap["deleted_at"] = s.DeletedAt

@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 )
 
 type SuccessResp struct {
@@ -38,11 +40,55 @@ type CreateEnvironmentResp struct {
 }
 
 type CreateSiteReq struct {
-	Domain          []string `json:"domain" binding:"required"`
-	RootDir         string   `json:"root_dir" binding:"required"`
-	Remark          string   `json:"remark"`
-	EnvironmentId   int      `json:"environment_id" binding:"required"`
-	CodeDownloadUrl string   `json:"code_download_url"`
+	Domain          []string         `json:"domain" binding:"required"`
+	RootDir         string           `json:"root_dir" binding:"required"`
+	Remark          string           `json:"remark"`
+	EnvironmentId   int              `json:"environment_id" binding:"required"`
+	CodeDownloadUrl string           `json:"code_download_url"`
+	Ext             accessor.SiteExt `json:"ext"`
+}
+
+type UpdateSiteReq struct {
+	Id            int      `json:"id" binding:"required"`
+	Domain        []string `json:"domain" binding:"required"`
+	RootDir       string   `json:"root_dir" binding:"required"`
+	Remark        string   `json:"remark"`
+	EnvironmentId int      `json:"environment_id" binding:"required"`
+}
+
+type SiteInfoReq struct {
+	Id     int    `json:"id"`
+	Domain string `json:"domain"`
+}
+
+type SiteInfoResp struct {
+	SiteEnvironment SiteEnvironmentResp `json:"site_environment"`
+	Site            SiteResp            `json:"site"`
+}
+
+type SiteEnvironmentResp struct {
+	Id                 int    `json:"id"`
+	Title              string `json:"title"`
+	Name               string `json:"name"`
+	AppName            string `json:"app_name"`
+	Group              string `json:"group"`
+	Language           string `json:"language"`
+	NginxVhostTemplate string `json:"nginx_vhost_template"`
+	Version            string `json:"version"`
+}
+
+type SiteResp struct {
+	Id            int    `json:"id"`
+	Domain        string `json:"domain"`
+	RootDir       string `json:"root_dir"`
+	Remark        string `json:"remark"`
+	EnvironmentId int    `json:"environment_id"`
+}
+
+type UpdateSiteCodeReq struct {
+	Domain          string            `json:"domain" binding:"required"`
+	CodeDownloadUrl string            `json:"code_download_url" binding:"required"`
+	Ext             *accessor.SiteExt `json:"ext,omitempty"`
 }
 
 func (s SiteManagerService) CreateEnvironment(createReq CreateEnvironmentReq) (*CreateEnvironmentResp, error) {
@@ -108,6 +154,147 @@ func (s SiteManagerService) CreateSite(createReq CreateSiteReq) error {
 	}
 
 	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/create", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		var apiError ApiError
+		err = json.Unmarshal(respBody, &apiError)
+		if err != nil {
+			return err
+		}
+
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = 500
+		}
+
+		return apiError
+	}
+
+	return nil
+}
+
+func (s SiteManagerService) UpdateSite(updateReq UpdateSiteReq) error {
+	payload, err := json.Marshal(updateReq)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/update", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		var apiError ApiError
+		err = json.Unmarshal(respBody, &apiError)
+		if err != nil {
+			return err
+		}
+
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = 500
+		}
+
+		return apiError
+	}
+
+	return nil
+}
+
+func (s SiteManagerService) InfoSite(infoReq SiteInfoReq) (*SiteInfoResp, error) {
+	payload, err := json.Marshal(infoReq)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/info", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	statusCode := resp.StatusCode
+	if statusCode != 200 {
+		var apiError ApiError
+		err = json.Unmarshal(respBody, &apiError)
+		if err != nil {
+			return nil, err
+		}
+
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = 500
+		}
+
+		return nil, apiError
+	}
+
+	infoResp := &SiteInfoResp{}
+	successResp := &SuccessResp{
+		Data: infoResp,
+	}
+
+	err = json.Unmarshal(respBody, successResp)
+	if err != nil {
+		return nil, err
+	}
+	return successResp.Data.(*SiteInfoResp), nil
+}
+
+func (s SiteManagerService) UpdateSiteCode(updateReq UpdateSiteCodeReq) error {
+	payload, err := json.Marshal(updateReq)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/update-code", bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
