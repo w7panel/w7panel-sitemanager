@@ -216,7 +216,7 @@ func isSameSiteEnvironment(environment site_manager.SiteEnvironmentResp) bool {
 		return false
 	}
 
-	return environment.AppName == getDesiredEnvironmentGroup()
+	return environment.Group == getDesiredEnvironmentGroup()
 }
 
 func getDesiredEnvironmentGroup() string {
