@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/w7panel/w7panel-sitemanager/app/application/logic"
+	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 	"github.com/w7panel/w7panel-sitemanager/common/dao"
 	"github.com/w7panel/w7panel-sitemanager/common/entity"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/http/controller"
@@ -20,11 +21,12 @@ type Site struct {
 
 func (c Site) Create(ctx *gin.Context) {
 	type ParamsValidate struct {
-		Domain          []string `json:"domain" binding:"required"`
-		RootDir         string   `json:"root_dir" binding:"required"`
-		Remark          string   `json:"remark"`
-		EnvironmentId   int      `json:"environment_id" binding:"required"`
-		CodeDownloadUrl string   `json:"code_download_url"`
+		Domain          []string         `json:"domain" binding:"required"`
+		RootDir         string           `json:"root_dir" binding:"required"`
+		Remark          string           `json:"remark"`
+		EnvironmentId   int              `json:"environment_id" binding:"required"`
+		CodeDownloadUrl string           `json:"code_download_url"`
+		Ext             accessor.SiteExt `json:"ext"`
 	}
 	params := ParamsValidate{}
 	if !c.Validate(ctx, &params) {
@@ -52,6 +54,7 @@ func (c Site) Create(ctx *gin.Context) {
 			RootDir:       params.RootDir,
 			Remark:        params.Remark,
 			EnvironmentID: setEnvironment.ID,
+			Ext:           params.Ext,
 		}
 		err := tx.Site.Create(curSite)
 		if err != nil {
@@ -165,8 +168,9 @@ func (c Site) Update(ctx *gin.Context) {
 
 func (c Site) UpdateCode(ctx *gin.Context) {
 	type ParamsValidate struct {
-		Domain          string `json:"domain" binding:"required"`
-		CodeDownloadUrl string `json:"code_download_url" binding:"required"`
+		Domain          string            `json:"domain" binding:"required"`
+		CodeDownloadUrl string            `json:"code_download_url" binding:"required"`
+		Ext             *accessor.SiteExt `json:"ext"`
 	}
 	params := ParamsValidate{}
 	if !c.Validate(ctx, &params) {
@@ -183,6 +187,14 @@ func (c Site) UpdateCode(ctx *gin.Context) {
 	if err != nil {
 		c.JsonResponseWithServerError(ctx, err)
 		return
+	}
+
+	if params.Ext != nil {
+		_, err = dao.Q.Site.Where(dao.Q.Site.ID.Eq(curSite.ID)).Update(dao.Q.Site.Ext, *params.Ext)
+		if err != nil {
+			c.JsonResponseWithServerError(ctx, err)
+			return
+		}
 	}
 
 	c.JsonSuccessResponse(ctx)
@@ -286,15 +298,16 @@ func (c Site) List(ctx *gin.Context) {
 	}
 
 	type SiteInfo struct {
-		ID                 int32     `json:"id"`
-		Domain             []string  `json:"domain"`
-		RootDir            string    `json:"root_dir"`
-		Remark             string    `json:"remark"`
-		EnvironmentID      int32     `json:"environment_id"`
-		EnvironmentName    string    `json:"environment_name"`
-		EnvironmentAppName string    `json:"environment_app_name"`
-		CreatedAt          time.Time `json:"created_at"`
-		UpdatedAt          time.Time `json:"updated_at"`
+		ID                 int32            `json:"id"`
+		Domain             []string         `json:"domain"`
+		RootDir            string           `json:"root_dir"`
+		Remark             string           `json:"remark"`
+		EnvironmentID      int32            `json:"environment_id"`
+		Ext                accessor.SiteExt `json:"ext"`
+		EnvironmentName    string           `json:"environment_name"`
+		EnvironmentAppName string           `json:"environment_app_name"`
+		CreatedAt          time.Time        `json:"created_at"`
+		UpdatedAt          time.Time        `json:"updated_at"`
 	}
 
 	query := dao.Q.Site.Preload(dao.Q.Site.Environment).Join(dao.Q.Environment, dao.Q.Site.EnvironmentID.EqCol(dao.Q.Environment.ID))
@@ -314,6 +327,7 @@ func (c Site) List(ctx *gin.Context) {
 			Domain:             strings.Split(list[i].Domain, ","),
 			RootDir:            list[i].RootDir,
 			Remark:             list[i].Remark,
+			Ext:                list[i].Ext,
 			CreatedAt:          list[i].CreatedAt,
 			UpdatedAt:          list[i].UpdatedAt,
 			EnvironmentName:    list[i].Environment.Title,

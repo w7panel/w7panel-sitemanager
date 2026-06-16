@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 	"github.com/w7panel/w7panel-sitemanager/common/helper"
 	"github.com/w7panel/w7panel-sitemanager/common/service/site_manager"
 	"github.com/w7panel/w7panel-sitemanager/common/service/w7panel"
@@ -44,6 +45,7 @@ type appCommandArgs struct {
 	CodeDownloadUrl     string
 	Cmd                 string
 	Domain              string
+	K8sAppName          string
 	EnableSsl           bool
 }
 
@@ -67,6 +69,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.EnvironmentVersion, "version", "", "environment version")
 	cmd.Flags().StringVar(&argsValue.Operation, "operation", "install", "operation type")
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
+	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
 	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Cmd, "cmd", "", "command")
 	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
@@ -116,6 +119,10 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		err = getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
 			Domain:          argsValue.Domain,
 			CodeDownloadUrl: argsValue.CodeDownloadUrl,
+			Ext: &accessor.SiteExt{
+				AppIdentify: argsValue.AppName,
+				K8sAppName:  argsValue.K8sAppName,
+			},
 		})
 		if err != nil {
 			panic(err)
@@ -145,6 +152,10 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		RootDir:         argsValue.Domain,
 		EnvironmentId:   environment.Id,
 		CodeDownloadUrl: argsValue.CodeDownloadUrl,
+		Ext: accessor.SiteExt{
+			AppIdentify: argsValue.AppName,
+			K8sAppName:  argsValue.K8sAppName,
+		},
 	})
 	if err != nil {
 		err1 := getSiteManagerService().DeleteEnvironment(environment.Id)

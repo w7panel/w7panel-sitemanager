@@ -7,6 +7,7 @@ package entity
 import (
 	"time"
 
+	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 	"gorm.io/gorm"
 )
 
@@ -14,16 +15,17 @@ const TableNameSite = "ims_site"
 
 // Site mapped from table <ims_site>
 type Site struct {
-	ID            int32          `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
-	Domain        string         `gorm:"column:domain;not null" json:"domain"`
-	RootDir       string         `gorm:"column:root_dir;not null" json:"root_dir"`
-	Remark        string         `gorm:"column:remark" json:"remark"`
-	EnvironmentID int32          `gorm:"column:environment_id" json:"environment_id"`
-	CreatedAt     time.Time      `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
-	UpdatedAt     time.Time      `gorm:"column:updated_at" json:"updated_at"`
-	DeletedAt     gorm.DeletedAt `gorm:"column:deleted_at" json:"deleted_at"`
-	SiteSetting   []SiteSetting  `gorm:"foreignKey:site_id" json:"site_setting"`
-	Environment   Environment    `gorm:"foreignKey:environment_id" json:"environment"`
+	ID            int32            `gorm:"column:id;primaryKey;autoIncrement:true" json:"id"`
+	Domain        string           `gorm:"column:domain;not null" json:"domain"`
+	RootDir       string           `gorm:"column:root_dir;not null" json:"root_dir"`
+	Remark        string           `gorm:"column:remark" json:"remark"`
+	EnvironmentID int32            `gorm:"column:environment_id" json:"environment_id"`
+	Ext           accessor.SiteExt `gorm:"column:ext;serializer:json" json:"ext"`
+	CreatedAt     time.Time        `gorm:"column:created_at;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	UpdatedAt     time.Time        `gorm:"column:updated_at" json:"updated_at"`
+	DeletedAt     gorm.DeletedAt   `gorm:"column:deleted_at" json:"deleted_at"`
+	SiteSetting   []SiteSetting    `gorm:"foreignKey:site_id" json:"site_setting"`
+	Environment   Environment      `gorm:"foreignKey:environment_id" json:"environment"`
 }
 
 // TableName Site's table name

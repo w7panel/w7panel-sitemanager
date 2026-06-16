@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 )
 
 type SuccessResp struct {
@@ -38,11 +40,12 @@ type CreateEnvironmentResp struct {
 }
 
 type CreateSiteReq struct {
-	Domain          []string `json:"domain" binding:"required"`
-	RootDir         string   `json:"root_dir" binding:"required"`
-	Remark          string   `json:"remark"`
-	EnvironmentId   int      `json:"environment_id" binding:"required"`
-	CodeDownloadUrl string   `json:"code_download_url"`
+	Domain          []string         `json:"domain" binding:"required"`
+	RootDir         string           `json:"root_dir" binding:"required"`
+	Remark          string           `json:"remark"`
+	EnvironmentId   int              `json:"environment_id" binding:"required"`
+	CodeDownloadUrl string           `json:"code_download_url"`
+	Ext             accessor.SiteExt `json:"ext"`
 }
 
 type UpdateSiteReq struct {
@@ -83,8 +86,9 @@ type SiteResp struct {
 }
 
 type UpdateSiteCodeReq struct {
-	Domain          string `json:"domain" binding:"required"`
-	CodeDownloadUrl string `json:"code_download_url" binding:"required"`
+	Domain          string            `json:"domain" binding:"required"`
+	CodeDownloadUrl string            `json:"code_download_url" binding:"required"`
+	Ext             *accessor.SiteExt `json:"ext,omitempty"`
 }
 
 func (s SiteManagerService) CreateEnvironment(createReq CreateEnvironmentReq) (*CreateEnvironmentResp, error) {
