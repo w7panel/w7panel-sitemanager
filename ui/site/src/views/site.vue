@@ -978,6 +978,9 @@ export default {
         if (!res) {
           return
         }
+        if(row.ext?.k8s_app_name){
+          this.deleteApp(row.ext?.k8s_app_name)
+        }
         this.patchImageConfig(environment.app_name, {
           spec: {
             template: {
@@ -999,6 +1002,9 @@ export default {
       }).finally(() => {
         this.deleteSiteConfig = false
       })
+    },
+    async deleteApp(name){
+      return panelAxios.delete("/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups/" + name.replace(/_/g, '-'))
     }
   }
 }
