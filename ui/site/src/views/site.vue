@@ -283,11 +283,7 @@ export default {
   },
   methods: {
     appManage(appgroup) {
-      window.$wujie?.bus?.$emit('openApp', {
-        title: '应用管理',
-        appgroup,
-        path: ''
-      })
+      window.open('/app/appgroup/' + appgroup + '/micro')
     },
     getDomainTips() {
       panelAxios.get('/api/v1/namespaces/default/configmaps/domain-parse').then(res => {
