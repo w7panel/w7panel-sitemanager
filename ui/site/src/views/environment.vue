@@ -46,12 +46,12 @@
               <template #default="scope">
                 <div class="df ai-c">
                   <template v-if="scope.row.status === 1">
-                                        <tooltip-button content="环境配置">
+                    <tooltip-button content="环境配置">
                       <el-icon @click="config(scope.row)">
                         <Setting />
                       </el-icon>
                     </tooltip-button>
-                                        <tooltip-button content="终端命令">
+                    <tooltip-button content="终端命令">
                       <svg style="margin-top: -1px;" @click="terminal(scope.row)" fill="none" stroke="currentColor"
                         stroke-width="4" viewBox="0 0 48 48" aria-hidden="true" focusable="false" stroke-linecap="butt"
                         stroke-linejoin="miter" class="arco-icon arco-icon-code-square">

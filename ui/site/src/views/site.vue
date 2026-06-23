@@ -55,6 +55,7 @@
                 <template #default="scope">
                   <el-button type="text" @click="edit(scope.row)">编辑</el-button>
                   <el-button type="text" @click="shortcut(scope.row)">https配置</el-button>
+                  <el-button  v-if="scope.row.ext?.k8s_app_name" type="text" @click="appManage(scope.row.ext?.k8s_app_name)">应用管理</el-button>
                   <el-popconfirm title="确认要删除站点吗？" icon="WarningFilled" confirm-button-type="danger"
                     icon-color="#f53f3f" width="180" @confirm="del(scope.row)">
                     <template #reference>
@@ -281,6 +282,9 @@ export default {
     this.getDomainTips()
   },
   methods: {
+    appManage(appgroup) {
+      window.open('/app/appgroup/' + appgroup + '/micro')
+    },
     getDomainTips() {
       panelAxios.get('/api/v1/namespaces/default/configmaps/domain-parse').then(res => {
         if (res.data.data.type === 'cname') {
@@ -974,6 +978,9 @@ export default {
         if (!res) {
           return
         }
+        if(row.ext?.k8s_app_name){
+          this.deleteApp(row.ext?.k8s_app_name)
+        }
         this.patchImageConfig(environment.app_name, {
           spec: {
             template: {
@@ -995,6 +1002,9 @@ export default {
       }).finally(() => {
         this.deleteSiteConfig = false
       })
+    },
+    async deleteApp(name){
+      return panelAxios.delete("/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups/" + name.replace(/_/g, '-'))
     }
   }
 }
