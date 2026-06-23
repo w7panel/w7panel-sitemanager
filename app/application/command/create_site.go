@@ -85,12 +85,9 @@ func (c SiteCreate) GetDescription() string {
 }
 
 func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
-	commands := make([]string, 0)
-	if argsValue.Cmd != "" && argsValue.Cmd != "[\"\"]" {
-		err := json.Unmarshal([]byte(argsValue.Cmd), &commands)
-		if err != nil {
-			panic(err)
-		}
+	commands, err := parseCommands(argsValue.Cmd)
+	if err != nil {
+		panic(err)
 	}
 
 	siteInfo, _ := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
@@ -117,7 +114,7 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 			}
 			slog.Info("站点环境更新成功", "domain", argsValue.Domain, "environment_id", environment.Id)
 		} else {
-			err := applyStartParamsEnvToDeploy(siteInfo.SiteEnvironment.AppName)
+			err := applyStartupConfigToDeploy(siteInfo.SiteEnvironment.AppName, commands)
 			if err != nil {
 				panic(err)
 			}
@@ -188,12 +185,12 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	slog.Info("站点安装成功", "params", argsValue)
 }
 
-func applyStartParamsEnvToDeploy(deployName string) error {
+func applyStartupConfigToDeploy(deployName string, command []string) error {
 	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
 	if err != nil {
 		return err
 	}
-	if len(startParamsEnv) == 0 {
+	if len(startParamsEnv) == 0 && len(command) == 0 {
 		return nil
 	}
 
@@ -205,7 +202,8 @@ func applyStartParamsEnvToDeploy(deployName string) error {
 		return fmt.Errorf("deployment %s has no containers", deployName)
 	}
 
-	upsertContainerEnv(&deployInfo.Spec.Template.Spec.Containers[0], startParamsEnv)
+	container := &deployInfo.Spec.Template.Spec.Containers[0]
+	applyStartupConfigToContainer(container, startParamsEnv, command)
 	return getPanelService().UpdateDeploy(deployInfo)
 }
 
@@ -352,14 +350,11 @@ func createSiteK8sResource(appName, version string, command []string, createIngr
 	sourceDeployInfo.Spec.Template.Labels["app"] = newName
 	sourceDeployInfo.Spec.Template.Spec.Containers[0].Image = strings.ReplaceAll(imageTemplate, "{version}", version)
 	sourceDeployInfo.Spec.Template.Spec.Containers[0].Name = newName
-	if len(command) > 0 {
-		sourceDeployInfo.Spec.Template.Spec.Containers[0].Command = command
-	}
 	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
 	if err != nil {
 		return nil, err
 	}
-	upsertContainerEnv(&sourceDeployInfo.Spec.Template.Spec.Containers[0], startParamsEnv)
+	applyStartupConfigToContainer(&sourceDeployInfo.Spec.Template.Spec.Containers[0], startParamsEnv, command)
 	for i, item := range sourceDeployInfo.Spec.Template.Spec.Containers[0].Env {
 		if item.Name == "METADATA_NAME" {
 			sourceDeployInfo.Spec.Template.Spec.Containers[0].Env[i].Value = newName
@@ -445,6 +440,29 @@ func parseStartParamsEnv(raw string) ([]v3.EnvVar, error) {
 		})
 	}
 	return env, nil
+}
+
+func parseCommands(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[\"\"]" {
+		return nil, nil
+	}
+
+	commands := make([]string, 0)
+	if err := json.Unmarshal([]byte(raw), &commands); err != nil {
+		return nil, err
+	}
+	if len(commands) == 1 && commands[0] == "" {
+		return nil, nil
+	}
+	return commands, nil
+}
+
+func applyStartupConfigToContainer(container *v3.Container, env []v3.EnvVar, command []string) {
+	if len(command) > 0 {
+		container.Command = command
+	}
+	upsertContainerEnv(container, env)
 }
 
 func upsertContainerEnv(container *v3.Container, env []v3.EnvVar) {
