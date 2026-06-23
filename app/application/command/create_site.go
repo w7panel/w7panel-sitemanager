@@ -451,14 +451,6 @@ func createSiteIngress() (string, error) {
 	return ingressName, nil
 }
 
-func getVersionIdentifie(appName, version string) string {
-	if version != "" {
-		cleanVersion := strings.ReplaceAll(version, ".", "")
-		return appName + "_" + cleanVersion
-	}
-	return appName
-}
-
 func copyYamlData(fromYamlData map[string]interface{}, toYamlData map[string]interface{}, rules []YamlCopyRule) map[string]interface{} {
 	// 2. 遍历并应用每一条规则
 	for _, rule := range rules {
