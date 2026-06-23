@@ -1,6 +1,7 @@
 package command
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -34,19 +35,20 @@ type YamlCopyRule struct {
 }
 
 type appCommandArgs struct {
-	W7PanelDomain       string
-	W7PanelToken        string
-	AppName             string
-	EnvironmentTitle    string
-	EnvironmentName     string
-	EnvironmentVersion  string
-	EnvironmentLanguage string
-	Operation           string
-	CodeDownloadUrl     string
-	Cmd                 string
-	Domain              string
-	K8sAppName          string
-	EnableSsl           bool
+	W7PanelDomain        string
+	W7PanelToken         string
+	AppName              string
+	EnvironmentTitle     string
+	EnvironmentName      string
+	EnvironmentVersion   string
+	EnvironmentLanguage  string
+	Operation            string
+	CodeDownloadUrl      string
+	Cmd                  string
+	Domain               string
+	K8sAppName           string
+	StartParamsEnvBase64 string
+	EnableSsl            bool
 }
 
 var argsValue appCommandArgs
@@ -72,6 +74,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
 	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Cmd, "cmd", "", "command")
+	cmd.Flags().StringVar(&argsValue.StartParamsEnvBase64, "start-params-env-base64", "", "base64 encoded start params env json")
 	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
 }
 
@@ -324,6 +327,11 @@ func createSiteK8sResource(appName, version string, command []string, createIngr
 	if len(command) > 0 {
 		sourceDeployInfo.Spec.Template.Spec.Containers[0].Command = command
 	}
+	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
+	if err != nil {
+		return nil, err
+	}
+	upsertContainerEnv(&sourceDeployInfo.Spec.Template.Spec.Containers[0], startParamsEnv)
 	for i, item := range sourceDeployInfo.Spec.Template.Spec.Containers[0].Env {
 		if item.Name == "METADATA_NAME" {
 			sourceDeployInfo.Spec.Template.Spec.Containers[0].Env[i].Value = newName
@@ -380,6 +388,51 @@ func createSiteK8sResource(appName, version string, command []string, createIngr
 		NginxTemplate: nginxTemplate,
 		IngressName:   ingressName,
 	}, nil
+}
+
+func parseStartParamsEnv(raw string) ([]v3.EnvVar, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "{}" || raw == "null" {
+		return nil, nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	envMap := make(map[string]string)
+	if err := json.Unmarshal(decoded, &envMap); err != nil {
+		return nil, err
+	}
+
+	env := make([]v3.EnvVar, 0, len(envMap))
+	for name, value := range envMap {
+		if name == "" {
+			continue
+		}
+		env = append(env, v3.EnvVar{
+			Name:  name,
+			Value: value,
+		})
+	}
+	return env, nil
+}
+
+func upsertContainerEnv(container *v3.Container, env []v3.EnvVar) {
+	for _, item := range env {
+		exists := false
+		for i, current := range container.Env {
+			if current.Name == item.Name {
+				container.Env[i] = item
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			container.Env = append(container.Env, item)
+		}
+	}
 }
 
 func createSiteIngress() (string, error) {
