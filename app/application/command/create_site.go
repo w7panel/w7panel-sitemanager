@@ -47,6 +47,7 @@ type appCommandArgs struct {
 	Cmd                  string
 	Domain               string
 	K8sAppName           string
+	K8sEnvAppName        string
 	StartParamsEnvBase64 string
 	EnableSsl            bool
 }
@@ -72,6 +73,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.Operation, "operation", "install", "operation type")
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
 	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
+	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
 	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Cmd, "cmd", "", "command")
 	cmd.Flags().StringVar(&argsValue.StartParamsEnvBase64, "start-params-env-base64", "", "base64 encoded start params env json")
@@ -299,7 +301,7 @@ func createSiteK8sResource(appName, version string, command []string, createIngr
 	}
 
 	// 5. 生成新名称
-	newName := argsValue.K8sAppName
+	newName := argsValue.K8sEnvAppName
 
 	sourceDeployInfo.Name = newName
 	if sourceDeployInfo.Labels == nil {
