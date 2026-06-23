@@ -88,14 +88,11 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	if argsValue.Operation == "upgrade" {
-		siteInfo, err := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
-			Domain: argsValue.Domain,
-		})
-		if err != nil {
-			panic(err)
-		}
+	siteInfo, _ := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
+		Domain: argsValue.Domain,
+	})
 
+	if argsValue.Operation == "upgrade" && siteInfo != nil {
 		if !isSameSiteEnvironment(siteInfo.SiteEnvironment) {
 			environment, info, err := createEnvironmentForSite(commands, false)
 			if err != nil {
@@ -116,7 +113,7 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 			slog.Info("站点环境更新成功", "domain", argsValue.Domain, "environment_id", environment.Id)
 		}
 
-		err = getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
+		err := getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
 			Domain:          argsValue.Domain,
 			CodeDownloadUrl: argsValue.CodeDownloadUrl,
 			Ext: &accessor.SiteExt{
@@ -299,7 +296,7 @@ func createSiteK8sResource(appName, version string, command []string, createIngr
 	}
 
 	// 5. 生成新名称
-	newName := "copy-" + strings.ToLower(helper.GetRandomStringNotContainsNumber(4)) + "-" + strings.ReplaceAll(getVersionIdentifie(appName, version), "_", "-")
+	newName := argsValue.K8sAppName
 
 	sourceDeployInfo.Name = newName
 	if sourceDeployInfo.Labels == nil {
