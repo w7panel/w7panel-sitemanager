@@ -72,6 +72,26 @@ func (s W7PanelService) CreateDeploy(deployInfo *v1.Deployment) error {
 	return nil
 }
 
+func (s W7PanelService) UpdateDeploy(deployInfo *v1.Deployment) error {
+	jsonData, err := json.Marshal(deployInfo)
+	if err != nil {
+		return err
+	}
+	safeAppName := strings.ReplaceAll(deployInfo.Name, "_", "-")
+	req, err := http.NewRequest(http.MethodPut, fmt.Sprintf("%s/k8s-proxy/apis/apps/v1/namespaces/default/deployments/%s", s.BaseUrl, safeAppName), bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.doPanelReq(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
 func (s W7PanelService) RestartDeployByPatch(name string) error {
 	// 构建 PATCH 请求的 JSON 数据
 	// 这会模拟 kubectl rollout restart 的行为

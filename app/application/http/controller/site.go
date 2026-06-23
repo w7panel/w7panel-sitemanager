@@ -190,7 +190,9 @@ func (c Site) UpdateCode(ctx *gin.Context) {
 	}
 
 	if params.Ext != nil {
-		_, err = dao.Q.Site.Where(dao.Q.Site.ID.Eq(curSite.ID)).Update(dao.Q.Site.Ext, *params.Ext)
+		_, err = dao.Q.Site.Where(dao.Q.Site.ID.Eq(curSite.ID)).Updates(entity.Site{
+			Ext: *params.Ext,
+		})
 		if err != nil {
 			c.JsonResponseWithServerError(ctx, err)
 			return

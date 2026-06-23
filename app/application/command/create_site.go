@@ -116,6 +116,11 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 				panic(err)
 			}
 			slog.Info("站点环境更新成功", "domain", argsValue.Domain, "environment_id", environment.Id)
+		} else {
+			err := applyStartParamsEnvToDeploy(siteInfo.SiteEnvironment.AppName)
+			if err != nil {
+				panic(err)
+			}
 		}
 
 		err := getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
@@ -181,6 +186,27 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	}
 
 	slog.Info("站点安装成功", "params", argsValue)
+}
+
+func applyStartParamsEnvToDeploy(deployName string) error {
+	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
+	if err != nil {
+		return err
+	}
+	if len(startParamsEnv) == 0 {
+		return nil
+	}
+
+	deployInfo, err := getPanelService().QueryDeploy(deployName)
+	if err != nil {
+		return err
+	}
+	if len(deployInfo.Spec.Template.Spec.Containers) == 0 {
+		return fmt.Errorf("deployment %s has no containers", deployName)
+	}
+
+	upsertContainerEnv(&deployInfo.Spec.Template.Spec.Containers[0], startParamsEnv)
+	return getPanelService().UpdateDeploy(deployInfo)
 }
 
 func createEnvironmentForSite(commands []string, createIngress bool) (*site_manager.CreateEnvironmentResp, *DeployInfo, error) {
