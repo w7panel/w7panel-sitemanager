@@ -45,6 +45,7 @@ type appCommandArgs struct {
 	Operation            string
 	CodeDownloadUrl      string
 	Cmd                  string
+	CmdBase64            string
 	Domain               string
 	K8sAppName           string
 	K8sEnvAppName        string
@@ -76,6 +77,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
 	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Cmd, "cmd", "", "command")
+	cmd.Flags().StringVar(&argsValue.CmdBase64, "cmd-base64", "", "base64 encoded command json")
 	cmd.Flags().StringVar(&argsValue.StartParamsEnvBase64, "start-params-env-base64", "", "base64 encoded start params env json")
 	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
 }
@@ -85,7 +87,7 @@ func (c SiteCreate) GetDescription() string {
 }
 
 func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
-	commands, err := parseCommands(argsValue.Cmd)
+	commands, err := parseCommands(argsValue.Cmd, argsValue.CmdBase64)
 	if err != nil {
 		panic(err)
 	}
@@ -442,7 +444,16 @@ func parseStartParamsEnv(raw string) ([]v3.EnvVar, error) {
 	return env, nil
 }
 
-func parseCommands(raw string) ([]string, error) {
+func parseCommands(raw, rawBase64 string) ([]string, error) {
+	rawBase64 = strings.TrimSpace(rawBase64)
+	if rawBase64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(rawBase64)
+		if err != nil {
+			return nil, err
+		}
+		raw = string(decoded)
+	}
+
 	raw = strings.TrimSpace(raw)
 	if raw == "" || raw == "[\"\"]" {
 		return nil, nil
