@@ -10,6 +10,7 @@ import (
 	"time"
 
 	v1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	v2 "k8s.io/api/networking/v1"
 )
 
@@ -135,6 +136,51 @@ func (s W7PanelService) DeleteDeploy(name string) error {
 	return nil
 }
 
+func (s W7PanelService) QueryJob(jobName string) (*batchv1.Job, error) {
+	safeJobName := strings.ReplaceAll(jobName, "_", "-")
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/k8s-proxy/apis/batch/v1/namespaces/default/jobs/%s", s.BaseUrl, safeJobName), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.doPanelReq(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	jobInfo := &batchv1.Job{}
+	err = json.Unmarshal(respBody, jobInfo)
+	if err != nil {
+		return nil, err
+	}
+
+	return jobInfo, nil
+}
+
+func (s W7PanelService) CreateJob(jobInfo *batchv1.Job) error {
+	jsonData, err := json.Marshal(jobInfo)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/k8s-proxy/apis/batch/v1/namespaces/default/jobs", s.BaseUrl), bytes.NewBuffer(jsonData))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.doPanelReq(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
 func (s W7PanelService) CreateIngress(ingressInfo v2.Ingress) error {
 	jsonData, err := json.Marshal(ingressInfo)
 	if err != nil {
@@ -186,7 +232,7 @@ func (s W7PanelService) doPanelReq(req *http.Request) (*http.Response, error) {
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get deployment, status: %d", resp.StatusCode, "response: %s", string(respBody))
+		return nil, fmt.Errorf("failed to get deployment, status: %d, response: %s", resp.StatusCode, string(respBody))
 	}
 
 	return resp, nil
