@@ -3,6 +3,7 @@ package command
 import (
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"strings"
 
 	"github.com/w7panel/w7panel-sitemanager/common/helper"
@@ -22,18 +23,22 @@ type SiteShell struct {
 func parseShells(rawBase64 string) ([]SiteShell, error) {
 	rawBase64 = strings.TrimSpace(rawBase64)
 	if rawBase64 == "" || rawBase64 == "{}" || rawBase64 == "null" {
+		slog.Info("site shell config empty", "domain", argsValue.Domain, "operation", argsValue.Operation)
 		return nil, nil
 	}
 
 	decoded, err := base64.StdEncoding.DecodeString(rawBase64)
 	if err != nil {
+		slog.Error("decode site shell config failed", "domain", argsValue.Domain, "operation", argsValue.Operation, "err", err)
 		return nil, err
 	}
 
 	shells := make([]SiteShell, 0)
 	if err := json.Unmarshal(decoded, &shells); err != nil {
+		slog.Error("parse site shell config failed", "domain", argsValue.Domain, "operation", argsValue.Operation, "err", err)
 		return nil, err
 	}
+	slog.Info("site shell config parsed", "domain", argsValue.Domain, "operation", argsValue.Operation, "shell_count", len(shells))
 	return shells, nil
 }
 
@@ -92,6 +97,17 @@ func buildSiteShellJob(deployInfo *v1.Deployment, shell SiteShell, operation str
 	if shell.Type == "custom" {
 		annotations["w7.cc/custom-hook"] = "true"
 	}
+
+	slog.Info("build site shell job",
+		"domain", argsValue.Domain,
+		"operation", operation,
+		"deploy", deployInfo.Name,
+		"job", jobName,
+		"shell_type", shell.Type,
+		"shell_title", shell.Title,
+		"image", image,
+		"shell_length", len(shell.Shell),
+	)
 
 	return &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{

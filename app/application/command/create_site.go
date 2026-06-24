@@ -498,15 +498,18 @@ func createSiteIngress() (string, error) {
 
 func runSiteShellsByOperation(shells []SiteShell, operation, deployName string) error {
 	if len(shells) == 0 {
+		slog.Info("skip site shell run: no shells", "domain", argsValue.Domain, "operation", operation, "deploy", deployName)
 		return nil
 	}
 
 	allowedTypes := getShellTypesByOperation(operation)
 	if len(allowedTypes) == 0 {
+		slog.Info("skip site shell run: unsupported operation", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "shell_count", len(shells))
 		return nil
 	}
 
 	if deployName == "" {
+		slog.Info("site shell deploy name empty, query by domain", "domain", argsValue.Domain, "operation", operation)
 		siteInfo, _ := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
 			Domain: argsValue.Domain,
 		})
@@ -515,14 +518,18 @@ func runSiteShellsByOperation(shells []SiteShell, operation, deployName string) 
 		}
 	}
 	if deployName == "" {
+		slog.Error("site shell deploy name empty", "domain", argsValue.Domain, "operation", operation)
 		return fmt.Errorf("empty deployment name for %s shell", operation)
 	}
 
+	slog.Info("query site shell deployment", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "shell_count", len(shells))
 	deployInfo, err := getPanelService().QueryDeploy(deployName)
 	if err != nil {
+		slog.Error("query site shell deployment failed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "err", err)
 		return err
 	}
 	if len(deployInfo.Spec.Template.Spec.Containers) == 0 {
+		slog.Error("site shell deployment has no containers", "domain", argsValue.Domain, "operation", operation, "deploy", deployName)
 		return fmt.Errorf("deployment %s has no containers", deployName)
 	}
 
@@ -533,41 +540,53 @@ func runSiteShellsByOperation(shells []SiteShell, operation, deployName string) 
 		}
 		runnableShells = append(runnableShells, shell)
 	}
+	slog.Info("site shell runnable list prepared", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "shell_count", len(shells), "runnable_count", len(runnableShells))
 	sort.SliceStable(runnableShells, func(i, j int) bool {
 		return shellExecutionWeight(runnableShells[i].Type) < shellExecutionWeight(runnableShells[j].Type)
 	})
 
 	for _, shell := range runnableShells {
 		job := buildSiteShellJob(deployInfo, shell, operation)
+		slog.Info("create site shell job", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title)
 		if err := getPanelService().CreateJob(job); err != nil {
+			slog.Error("create site shell job failed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title, "err", err)
 			return err
 		}
+		slog.Info("wait site shell job", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title)
 		if err := waitSiteShellJob(job.Name, 10*time.Minute); err != nil {
+			slog.Error("site shell job failed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title, "err", err)
 			return err
 		}
+		slog.Info("site shell job completed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title)
 	}
 
+	slog.Info("site shell run finished", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "runnable_count", len(runnableShells))
 	return nil
 }
 
 func waitSiteShellJob(jobName string, timeout time.Duration) error {
+	slog.Info("start polling site shell job", "domain", argsValue.Domain, "job", jobName, "timeout", timeout.String())
 	deadline := time.Now().Add(timeout)
 	for {
 		jobInfo, err := getPanelService().QueryJob(jobName)
 		if err != nil {
+			slog.Error("query site shell job failed", "domain", argsValue.Domain, "job", jobName, "err", err)
 			return err
 		}
 
 		for _, condition := range jobInfo.Status.Conditions {
 			if condition.Type == batchv1.JobComplete && condition.Status == v3.ConditionTrue {
+				slog.Info("site shell job condition complete", "domain", argsValue.Domain, "job", jobName, "succeeded", jobInfo.Status.Succeeded, "failed", jobInfo.Status.Failed)
 				return nil
 			}
 			if condition.Type == batchv1.JobFailed && condition.Status == v3.ConditionTrue {
+				slog.Error("site shell job condition failed", "domain", argsValue.Domain, "job", jobName, "message", condition.Message, "reason", condition.Reason, "succeeded", jobInfo.Status.Succeeded, "failed", jobInfo.Status.Failed)
 				return fmt.Errorf("site shell job %s failed: %s", jobName, condition.Message)
 			}
 		}
 
 		if time.Now().After(deadline) {
+			slog.Error("site shell job wait timed out", "domain", argsValue.Domain, "job", jobName, "active", jobInfo.Status.Active, "succeeded", jobInfo.Status.Succeeded, "failed", jobInfo.Status.Failed)
 			return fmt.Errorf("site shell job %s timed out", jobName)
 		}
 		time.Sleep(2 * time.Second)
