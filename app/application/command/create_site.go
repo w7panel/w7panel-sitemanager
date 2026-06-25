@@ -1,37 +1,27 @@
 package command
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/url"
-	"sort"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/w7panel/w7panel-sitemanager/app/application/logic"
 	"github.com/w7panel/w7panel-sitemanager/common/accessor"
-	"github.com/w7panel/w7panel-sitemanager/common/helper"
 	"github.com/w7panel/w7panel-sitemanager/common/service/site_manager"
 	"github.com/w7panel/w7panel-sitemanager/common/service/w7panel"
 	"github.com/w7panel/w7panel-sitemanager/common/service/zpk"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/console"
-	v1 "k8s.io/api/apps/v1"
-	batchv1 "k8s.io/api/batch/v1"
 	v3 "k8s.io/api/core/v1"
-	v2 "k8s.io/api/networking/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type DeployInfo struct {
 	Name          string `json:"name"`
 	NginxTemplate string `json:"nginx_template"`
 	IngressName   string `json:"ingress_name"`
-}
-
-type YamlCopyRule struct {
-	Source string `json:"source"`
-	Target string `json:"target"`
 }
 
 type appCommandArgs struct {
@@ -97,6 +87,10 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
+	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
+	if err != nil {
+		panic(err)
+	}
 
 	urlInfo, err := url.Parse(argsValue.CodeDownloadUrl)
 	if err != nil {
@@ -109,19 +103,37 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	zpkInfo, err := zpkService.GetZpkInfo(argsValue.AppName)
 	slog.Info("get zpk info", "info", zpkInfo, "err", err, "name", argsValue.AppName)
 
-	siteInfo, _ := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
+	w7panelService := logic.GetPanelService(argsValue.Domain, argsValue.W7PanelToken)
+	siteManagerService := getSiteManagerService()
+
+	needRestartNginx := false
+	siteInfo, _ := siteManagerService.InfoSite(site_manager.SiteInfoReq{
 		Domain: argsValue.Domain,
 	})
+	shellDeployName := ""
 	if argsValue.Operation == "upgrade" && siteInfo != nil {
-		shellDeployName := siteInfo.SiteEnvironment.AppName
+		shellDeployName = siteInfo.SiteEnvironment.AppName
 		if !isSameSiteEnvironment(siteInfo.SiteEnvironment) {
-			environment, info, err := createEnvironmentForSite(commands, false)
+			info, err := createSiteK8sResource(w7panelService, false)
 			if err != nil {
 				panic(err)
 			}
-			shellDeployName = info.Name
 
-			err = getSiteManagerService().UpdateSite(site_manager.UpdateSiteReq{
+			environment, err := siteManagerService.CreateEnvironment(site_manager.CreateEnvironmentReq{
+				Title:              argsValue.EnvironmentTitle,
+				Language:           argsValue.EnvironmentLanguage,
+				Version:            argsValue.EnvironmentVersion,
+				Group:              getDesiredEnvironmentGroup(),
+				AppName:            info.Name,
+				NginxVhostTemplate: info.NginxTemplate,
+			})
+			if err != nil {
+				cleanupCreatedEnvironment(w7panelService, 0, info)
+				panic(err)
+			}
+
+			shellDeployName = info.Name
+			err = siteManagerService.UpdateSite(site_manager.UpdateSiteReq{
 				Id:            siteInfo.Site.Id,
 				Domain:        strings.Split(siteInfo.Site.Domain, ","),
 				RootDir:       siteInfo.Site.RootDir,
@@ -129,229 +141,103 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 				EnvironmentId: environment.Id,
 			})
 			if err != nil {
-				cleanupCreatedEnvironment(environment.Id, info)
+				cleanupCreatedEnvironment(w7panelService, environment.Id, info)
 				panic(err)
 			}
+			needRestartNginx = true
 			slog.Info("站点环境更新成功", "domain", argsValue.Domain, "environment_id", environment.Id)
-		} else {
-			err := applyStartupConfigToDeploy(siteInfo.SiteEnvironment.AppName, commands)
-			if err != nil {
-				panic(err)
-			}
+		}
+		slog.Info("站点代码更新成功", "params", argsValue)
+	} else {
+		info, err := createSiteK8sResource(w7panelService, true)
+		if err != nil {
+			panic(err)
 		}
 
-		err := getSiteManagerService().UpdateSiteCode(site_manager.UpdateSiteCodeReq{
-			Domain:          argsValue.Domain,
-			CodeDownloadUrl: argsValue.CodeDownloadUrl,
-			Ext: &accessor.SiteExt{
+		environment, err := siteManagerService.CreateEnvironment(site_manager.CreateEnvironmentReq{
+			Title:              argsValue.EnvironmentTitle,
+			Language:           argsValue.EnvironmentLanguage,
+			Version:            argsValue.EnvironmentVersion,
+			Group:              getDesiredEnvironmentGroup(),
+			AppName:            info.Name,
+			NginxVhostTemplate: info.NginxTemplate,
+		})
+		if err != nil {
+			cleanupCreatedEnvironment(w7panelService, 0, info)
+			panic(err)
+		}
+
+		err = siteManagerService.CreateSite(site_manager.CreateSiteReq{
+			Domain:        []string{argsValue.Domain},
+			RootDir:       argsValue.Domain,
+			EnvironmentId: environment.Id,
+			Ext: accessor.SiteExt{
 				AppIdentify: argsValue.AppName,
 				K8sAppName:  argsValue.K8sAppName,
 			},
 		})
 		if err != nil {
+			cleanupCreatedEnvironment(w7panelService, environment.Id, info)
 			panic(err)
 		}
-		if err := runSiteShellsByOperation(shells, argsValue.Operation, shellDeployName); err != nil {
-			panic(err)
-		}
-		slog.Info("站点代码更新成功", "params", argsValue)
-		return
+		needRestartNginx = true
+		shellDeployName = info.Name
 	}
 
-	environment, info, err := createEnvironmentForSite(commands, true)
-	if err != nil {
-		panic(err)
-	}
-	err = getSiteManagerService().CreateSite(site_manager.CreateSiteReq{
-		Domain:          []string{argsValue.Domain},
-		RootDir:         argsValue.Domain,
-		EnvironmentId:   environment.Id,
-		CodeDownloadUrl: argsValue.CodeDownloadUrl,
-		Ext: accessor.SiteExt{
-			AppIdentify: argsValue.AppName,
-			K8sAppName:  argsValue.K8sAppName,
-		},
-	})
-	if err != nil {
-		cleanupCreatedEnvironment(environment.Id, info)
-		panic(err)
-	}
-
-	if err := runSiteShellsByOperation(shells, argsValue.Operation, info.Name); err != nil {
-		panic(err)
-	}
-
-	err = getPanelService().RestartDeployByPatch("w7-sitemanager-site-manager-nginx")
+	shells = append(shells, getRestartContainerShellCommand(argsValue.W7PanelDomain, argsValue.W7PanelToken, shellDeployName, "default", shellDeployName, commands))
+	shells = append(shells, getDownloadCodeShellCommand(argsValue.CodeDownloadUrl))
+	err = logic.RunSiteShellsByOperation(w7panelService, shellDeployName, argsValue.Operation, startParamsEnv, shells)
 	if err != nil {
 		slog.Error(err.Error())
+		panic(err)
+	}
+
+	if needRestartNginx {
+		err = w7panelService.RestartDeployByPatch("w7-sitemanager-site-manager-nginx")
+		if err != nil {
+			slog.Error(err.Error())
+		}
 	}
 
 	slog.Info("站点安装成功", "params", argsValue)
 }
 
-func createEnvironmentForSite(commands []string, createIngress bool) (*site_manager.CreateEnvironmentResp, *DeployInfo, error) {
-	info, err := createSiteK8sResource(getDesiredEnvironmentGroup(), argsValue.EnvironmentVersion, commands, createIngress)
+func createSiteK8sResource(w7panelService w7panel.W7PanelService, createIngress bool) (*DeployInfo, error) {
+	sourceDeployInfo, err := w7panelService.QueryDeploy(getDesiredEnvironmentGroup())
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	environment, err := getSiteManagerService().CreateEnvironment(site_manager.CreateEnvironmentReq{
-		Title:              argsValue.EnvironmentTitle,
-		Language:           argsValue.EnvironmentLanguage,
-		Version:            argsValue.EnvironmentVersion,
-		Group:              getDesiredEnvironmentGroup(),
-		AppName:            info.Name,
-		NginxVhostTemplate: info.NginxTemplate,
-	})
-	if err != nil {
-		cleanupCreatedEnvironment(0, info)
-		return nil, nil, err
-	}
-
-	return environment, info, nil
-}
-
-func createSiteK8sResource(appName, version string, command []string, createIngress bool) (*DeployInfo, error) {
-	sourceDeployInfo, err := getPanelService().QueryDeploy(appName)
+	err = logic.CopySiteK8sEnvironmentDeployment(w7panelService, sourceDeployInfo, argsValue.K8sEnvAppName, argsValue.EnvironmentVersion)
 	if err != nil {
 		return nil, err
 	}
 
 	nginxTemplate := ""
-	imageTemplate := ""
+	ingressName := ""
+	if createIngress {
+		if sourceDeployInfo.Spec.Template.Annotations == nil {
+			sourceDeployInfo.Spec.Template.Annotations = make(map[string]string)
+		}
+		if val, ok := sourceDeployInfo.Spec.Template.Annotations["w7.cc/nginx_vhost_template"]; ok && val != "" {
+			nginxTemplate = val
+		}
 
-	if sourceDeployInfo.Spec.Template.Annotations == nil {
-		sourceDeployInfo.Spec.Template.Annotations = make(map[string]string)
-	}
-	if rules, ok := sourceDeployInfo.Spec.Template.Annotations["w7.cc/yaml_copy"]; ok && rules != "" {
-		copyRules := make([]YamlCopyRule, 0)
-		err := json.Unmarshal([]byte(rules), &copyRules)
+		ingressName, err = logic.CreateSiteIngress(w7panelService, argsValue.Domain, argsValue.EnableSsl)
 		if err != nil {
+			w7panelService.DeleteDeploy(argsValue.K8sEnvAppName)
 			return nil, err
 		}
-		// 模拟获取 siteManagerData
-		siteManagerData, err := getPanelService().QueryDeploy("w7-sitemanager-site-manager")
-		if err != nil {
-			return nil, err
-		}
-
-		sourceDeployData, err := deploymentToMap(sourceDeployInfo)
-		if err != nil {
-			return nil, err
-		}
-		siteManagerDeployData, err := deploymentToMap(siteManagerData)
-		if err != nil {
-			return nil, err
-		}
-
-		data := copyYamlData(siteManagerDeployData, sourceDeployData, copyRules)
-
-		tmp, err := mapToDeployment(data)
-		if err != nil {
-			return nil, err
-		}
-
-		sourceDeployInfo = tmp
-	}
-
-	if val, ok := sourceDeployInfo.Spec.Template.Annotations["w7.cc/image_template"]; ok && val != "" {
-		imageTemplate = val
-	}
-
-	if val, ok := sourceDeployInfo.Spec.Template.Annotations["w7.cc/nginx_vhost_template"]; ok && val != "" {
-		nginxTemplate = val
-	}
-
-	// 5. 生成新名称
-	newName := argsValue.K8sEnvAppName
-
-	sourceDeployInfo.Name = newName
-	if sourceDeployInfo.Labels == nil {
-		sourceDeployInfo.Labels = make(map[string]string)
-	}
-	if sourceDeployInfo.Annotations == nil {
-		sourceDeployInfo.Annotations = make(map[string]string)
-	}
-	sourceDeployInfo.Annotations["w7.cc/create-svc"] = "true"
-	sourceDeployInfo.Annotations["title"] = newName
-	sourceDeployInfo.Labels["app"] = newName
-	if sourceDeployInfo.Spec.Selector == nil {
-		sourceDeployInfo.Spec.Selector = &metav1.LabelSelector{}
-	}
-	if sourceDeployInfo.Spec.Selector.MatchLabels == nil {
-		sourceDeployInfo.Spec.Selector.MatchLabels = make(map[string]string)
-	}
-	sourceDeployInfo.Spec.Selector.MatchLabels["app"] = newName
-	if sourceDeployInfo.Spec.Template.Labels == nil {
-		sourceDeployInfo.Spec.Template.Labels = make(map[string]string)
-	}
-	sourceDeployInfo.Spec.Template.Labels["app"] = newName
-	sourceDeployInfo.Spec.Template.Spec.Containers[0].Image = strings.ReplaceAll(imageTemplate, "{version}", version)
-	sourceDeployInfo.Spec.Template.Spec.Containers[0].Name = newName
-	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
-	if err != nil {
-		return nil, err
-	}
-	applyStartupConfigToContainer(&sourceDeployInfo.Spec.Template.Spec.Containers[0], startParamsEnv, command)
-	for i, item := range sourceDeployInfo.Spec.Template.Spec.Containers[0].Env {
-		if item.Name == "METADATA_NAME" {
-			sourceDeployInfo.Spec.Template.Spec.Containers[0].Env[i].Value = newName
-			sourceDeployInfo.Spec.Template.Spec.Containers[0].Env[i].ValueFrom = nil
-		}
-	}
-	sourceDeployInfo.Spec.Template.Spec.Affinity = &v3.Affinity{
-		PodAffinity: &v3.PodAffinity{
-			RequiredDuringSchedulingIgnoredDuringExecution: []v3.PodAffinityTerm{
-				v3.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							metav1.LabelSelectorRequirement{
-								Key:      "w7.cc/identifie",
-								Operator: metav1.LabelSelectorOpIn,
-								Values:   []string{"w7-sitemanager"},
-							},
-						},
-					},
-					TopologyKey: "kubernetes.io/hostname",
-				},
-			},
-		},
-	}
-
-	sourceDeployInfo.ResourceVersion = ""
-	sourceDeployInfo.Generation = 0
-	sourceDeployInfo.CreationTimestamp = metav1.Time{
-		Time: time.Now(),
-	}
-	sourceDeployInfo.UID = ""
-	sourceDeployInfo.Status = v1.DeploymentStatus{}
-
-	err = getPanelService().CreateDeploy(sourceDeployInfo)
-	if err != nil {
-		return nil, err
-	}
-
-	if !createIngress {
-		return &DeployInfo{
-			Name:          newName,
-			NginxTemplate: nginxTemplate,
-		}, nil
-	}
-
-	ingressName, err := createSiteIngress()
-	if err != nil {
-		getPanelService().DeleteDeploy(newName)
-		return nil, err
 	}
 
 	return &DeployInfo{
-		Name:          newName,
+		Name:          argsValue.K8sEnvAppName,
 		NginxTemplate: nginxTemplate,
 		IngressName:   ingressName,
 	}, nil
 }
 
-func cleanupCreatedEnvironment(environmentId int, info *DeployInfo) {
+func cleanupCreatedEnvironment(w7panelService w7panel.W7PanelService, environmentId int, info *DeployInfo) {
 	if environmentId > 0 {
 		if err := getSiteManagerService().DeleteEnvironment(environmentId); err != nil {
 			slog.Error(err.Error())
@@ -360,13 +246,156 @@ func cleanupCreatedEnvironment(environmentId int, info *DeployInfo) {
 	if info == nil {
 		return
 	}
-	if err := getPanelService().DeleteDeploy(info.Name); err != nil {
+	if err := w7panelService.DeleteDeploy(info.Name); err != nil {
 		slog.Error(err.Error())
 	}
 	if info.IngressName != "" {
-		if err := getPanelService().DeleteIngress(info.IngressName); err != nil {
+		if err := w7panelService.DeleteIngress(info.IngressName); err != nil {
 			slog.Error(err.Error())
 		}
+	}
+}
+
+func getDownloadCodeShellCommand(codeDownloadUrl string) logic.SiteShell {
+	command := fmt.Sprintf(`
+# 1. 环境变量检查
+              if [ -z "$DOMAIN_URL" ]; then
+                echo "错误: 环境变量 DOMAIN_URL 未设置或为空"
+                exit 1
+              fi
+              echo "使用环境变量 DOMAIN_URL: $DOMAIN_URL"
+              
+              # 2. 基础路径与文件定义
+              WEB_BASE_PATH="/www/wwwroot/$DOMAIN_URL"
+              ZIP_URL="%s"  # 建议将下载地址放在 values.yaml 中
+              ZIP_FILE="/tmp/code.zip"
+              
+              # 3. 创建目标目录
+              echo "创建目标目录: $WEB_BASE_PATH"
+              mkdir -p "$WEB_BASE_PATH"
+              
+              # 4. 下载代码包
+              echo "开始下载代码包: $ZIP_URL"
+              if ! wget -q -O "$ZIP_FILE" "$ZIP_URL"; then
+                echo "错误: 代码包下载失败"
+                exit 1
+              fi
+              
+              # 5. 解压到指定目录
+              echo "解压代码到: $WEB_BASE_PATH"
+              if ! unzip -q -o "$ZIP_FILE" -d "$WEB_BASE_PATH"; then
+                echo "错误: 代码包解压失败"
+                exit 1
+              fi
+              
+              # 6. 清理临时文件
+              rm -f "$ZIP_FILE"
+              echo "代码下载并解压成功！"`, codeDownloadUrl)
+
+	return logic.SiteShell{
+		Shell: command,
+		Title: "code-download",
+		Type:  "fix-first",
+		Image: "alpine:3.18",
+	}
+}
+
+func getRestartContainerShellCommand(k8sApiUrl, authToken, deploymentName, namespace, containerName string, newCommand []string) logic.SiteShell {
+	cmdJsonStr := ""
+	if len(newCommand) > 0 {
+		cmdBytes, _ := json.Marshal(newCommand)
+		cmdJsonStr = string(cmdBytes)
+	}
+
+	// 2. 所有参数全部通过 fmt.Sprintf 的占位符直接替换到 Shell 脚本中
+	command := fmt.Sprintf(`
+echo "正在准备处理 Deployment: %s/%s"
+
+# 2. 基础路径与文件定义
+URL="%s/apis/apps/v1/namespaces/%s/deployments/%s"
+AUTH_TOKEN="%s"
+TIMESTAMP=$(date -u +"%%Y-%%m-%%dT%%H:%%M:%%SZ")
+
+# 3. 动态构建 JSON Payload
+# 判断传入的 command JSON 字符串是否为空
+if [ -n "%s" ]; then
+  echo "检测到新 command 数组: %s"
+  PAYLOAD=$(jq -n \
+    --arg name "%s" \
+    --argjson cmd '%s' \
+    --arg ts "$TIMESTAMP" \
+    '{
+      "spec": {
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": $ts
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": $name,
+                "command": $cmd
+              }
+            ]
+          }
+        }
+      }
+    }')
+else
+  echo "未提供新 command，仅触发滚动重启..."
+  PAYLOAD=$(jq -n \
+    --arg ts "$TIMESTAMP" \
+    '{
+      "spec": {
+        "template": {
+          "metadata": {
+            "annotations": {
+              "kubectl.kubernetes.io/restartedAt": $ts
+            }
+          }
+        }
+      }
+    }')
+fi
+
+# 4. 执行 PATCH 请求
+echo "发送 PATCH 请求..."
+RESPONSE=$(curl -s -k -X PATCH \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  -H "Content-Type: application/merge-patch+json" \
+  -d "$PAYLOAD" \
+  "$URL")
+
+# 5. 检查响应状态
+STATUS=$(echo "$RESPONSE" | jq -r '.metadata.generation // empty' 2>/dev/null)
+if [ -n "$STATUS" ]; then
+  echo "Deployment %s 处理成功！Generation: $STATUS"
+else
+  echo "API 响应错误: $RESPONSE"
+  exit 1
+fi`,
+		namespace, deploymentName, // 日志输出
+		k8sApiUrl, namespace, deploymentName, // URL 拼接
+		authToken,              // Token
+		cmdJsonStr, cmdJsonStr, // Command 判空及日志
+		containerName,  // jq --arg name
+		cmdJsonStr,     // jq --argjson cmd (直接替换 JSON 数组)
+		deploymentName, // 成功日志
+	)
+
+	return logic.SiteShell{
+		Shell: command,
+		Title: "restart-container",
+		Type:  "fix-install",
+		Image: "curlimages/curl:8.7.1",
+	}
+}
+
+func getSiteManagerService() site_manager.SiteManagerService {
+	return site_manager.SiteManagerService{
+		BaseUrl: "http://w7-sitemanager-site-manager.default.svc.cluster.local:8000",
 	}
 }
 
@@ -382,226 +411,78 @@ func getDesiredEnvironmentGroup() string {
 	return strings.ReplaceAll(argsValue.EnvironmentName, "_", "-")
 }
 
-func applyStartupConfigToDeploy(deployName string, command []string) error {
-	startParamsEnv, err := parseStartParamsEnv(argsValue.StartParamsEnvBase64)
+func parseStartParamsEnv(raw string) ([]v3.EnvVar, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "{}" || raw == "null" {
+		return nil, nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return err
-	}
-	if len(startParamsEnv) == 0 && len(command) == 0 {
-		return nil
+		return nil, err
 	}
 
-	deployInfo, err := getPanelService().QueryDeploy(deployName)
-	if err != nil {
-		return err
-	}
-	if len(deployInfo.Spec.Template.Spec.Containers) == 0 {
-		return fmt.Errorf("deployment %s has no containers", deployName)
+	envMap := make(map[string]string)
+	if err := json.Unmarshal(decoded, &envMap); err != nil {
+		return nil, err
 	}
 
-	container := &deployInfo.Spec.Template.Spec.Containers[0]
-	applyStartupConfigToContainer(container, startParamsEnv, command)
-	return getPanelService().UpdateDeploy(deployInfo)
-}
-
-func applyStartupConfigToContainer(container *v3.Container, env []v3.EnvVar, command []string) {
-	if len(command) > 0 {
-		container.Command = command
-	}
-	upsertContainerEnv(container, env)
-}
-
-func upsertContainerEnv(container *v3.Container, env []v3.EnvVar) {
-	for _, item := range env {
-		exists := false
-		for i, current := range container.Env {
-			if current.Name == item.Name {
-				container.Env[i] = item
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			container.Env = append(container.Env, item)
-		}
-	}
-}
-
-func createSiteIngress() (string, error) {
-	ingressName := "ing-" + strings.ToLower(helper.GetRandomStringNotContainsNumber(12))
-	pathType := v2.PathTypePrefix
-	ingressInfo := v2.Ingress{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Ingress",
-			APIVersion: "networking.k8s.io/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ingressName,
-			Namespace: "default",
-			Annotations: map[string]string{
-				"kubernetes.io/ingress.class": "higress",
-				"higress.io/resource-definer": "higress",
-			},
-			Labels: map[string]string{
-				"higress.io/resource-definer": "higress",
-				"app":                         "w7-sitemanager-site-manager-nginx",
-				"group":                       "w7-sitemanager",
-			},
-		},
-		Spec: v2.IngressSpec{
-			Rules: []v2.IngressRule{
-				v2.IngressRule{
-					Host: argsValue.Domain,
-					IngressRuleValue: v2.IngressRuleValue{
-						HTTP: &v2.HTTPIngressRuleValue{
-							Paths: []v2.HTTPIngressPath{
-								v2.HTTPIngressPath{
-									Path:     "/",
-									PathType: &pathType,
-									Backend: v2.IngressBackend{
-										Service: &v2.IngressServiceBackend{
-											Name: "w7-sitemanager-site-manager-nginx",
-											Port: v2.ServiceBackendPort{
-												Number: 80,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-
-	if argsValue.EnableSsl {
-		ingressInfo.Annotations["higress.io/ssl-redirect"] = "false"
-		ingressInfo.Annotations["w7.cc/ssl-redirect"] = "false"
-		ingressInfo.Annotations["cert-manager.io/cluster-issuer"] = "w7-letsencrypt-prod"
-		ingressInfo.Annotations["cert-manager.io/renew-before"] = "30m"
-		ingressInfo.Spec.TLS = []v2.IngressTLS{
-			v2.IngressTLS{
-				Hosts:      []string{argsValue.Domain},
-				SecretName: argsValue.Domain + "-tls-secret",
-			},
-		}
-	}
-
-	err := getPanelService().CreateIngress(ingressInfo)
-	if err != nil {
-		return "", err
-	}
-
-	return ingressName, nil
-}
-
-func runSiteShellsByOperation(shells []SiteShell, operation, deployName string) error {
-	if len(shells) == 0 {
-		slog.Info("skip site shell run: no shells", "domain", argsValue.Domain, "operation", operation, "deploy", deployName)
-		return nil
-	}
-
-	allowedTypes := getShellTypesByOperation(operation)
-	if len(allowedTypes) == 0 {
-		slog.Info("skip site shell run: unsupported operation", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "shell_count", len(shells))
-		return nil
-	}
-
-	if deployName == "" {
-		slog.Info("site shell deploy name empty, query by domain", "domain", argsValue.Domain, "operation", operation)
-		siteInfo, _ := getSiteManagerService().InfoSite(site_manager.SiteInfoReq{
-			Domain: argsValue.Domain,
-		})
-		if siteInfo != nil {
-			deployName = siteInfo.SiteEnvironment.AppName
-		}
-	}
-	if deployName == "" {
-		slog.Error("site shell deploy name empty", "domain", argsValue.Domain, "operation", operation)
-		return fmt.Errorf("empty deployment name for %s shell", operation)
-	}
-
-	slog.Info("query site shell deployment", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "shell_count", len(shells))
-	deployInfo, err := getPanelService().QueryDeploy(deployName)
-	if err != nil {
-		slog.Error("query site shell deployment failed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "err", err)
-		return err
-	}
-	if len(deployInfo.Spec.Template.Spec.Containers) == 0 {
-		slog.Error("site shell deployment has no containers", "domain", argsValue.Domain, "operation", operation, "deploy", deployName)
-		return fmt.Errorf("deployment %s has no containers", deployName)
-	}
-
-	runnableShells := make([]SiteShell, 0, len(shells))
-	for _, shell := range shells {
-		if !allowedTypes[shell.Type] || strings.TrimSpace(shell.Shell) == "" {
+	env := make([]v3.EnvVar, 0, len(envMap))
+	for name, value := range envMap {
+		if name == "" {
 			continue
 		}
-		runnableShells = append(runnableShells, shell)
+		env = append(env, v3.EnvVar{
+			Name:  name,
+			Value: value,
+		})
 	}
-	slog.Info("site shell runnable list prepared", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "shell_count", len(shells), "runnable_count", len(runnableShells))
-	sort.SliceStable(runnableShells, func(i, j int) bool {
-		return shellExecutionWeight(runnableShells[i].Type) < shellExecutionWeight(runnableShells[j].Type)
-	})
-
-	for _, shell := range runnableShells {
-		job := buildSiteShellJob(deployInfo, shell, operation)
-		slog.Info("create site shell job", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title)
-		if err := getPanelService().CreateJob(job); err != nil {
-			slog.Error("create site shell job failed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title, "err", err)
-			return err
-		}
-		slog.Info("wait site shell job", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title)
-		if err := waitSiteShellJob(job.Name, 10*time.Minute); err != nil {
-			slog.Error("site shell job failed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title, "err", err)
-			return err
-		}
-		slog.Info("site shell job completed", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "job", job.Name, "shell_type", shell.Type, "shell_title", shell.Title)
-	}
-
-	slog.Info("site shell run finished", "domain", argsValue.Domain, "operation", operation, "deploy", deployName, "runnable_count", len(runnableShells))
-	return nil
+	return env, nil
 }
 
-func waitSiteShellJob(jobName string, timeout time.Duration) error {
-	slog.Info("start polling site shell job", "domain", argsValue.Domain, "job", jobName, "timeout", timeout.String())
-	deadline := time.Now().Add(timeout)
-	for {
-		jobInfo, err := getPanelService().QueryJob(jobName)
+func parseCommands(raw, rawBase64 string) ([]string, error) {
+	rawBase64 = strings.TrimSpace(rawBase64)
+	if rawBase64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(rawBase64)
 		if err != nil {
-			slog.Error("query site shell job failed", "domain", argsValue.Domain, "job", jobName, "err", err)
-			return err
+			return nil, err
 		}
-
-		for _, condition := range jobInfo.Status.Conditions {
-			if condition.Type == batchv1.JobComplete && condition.Status == v3.ConditionTrue {
-				slog.Info("site shell job condition complete", "domain", argsValue.Domain, "job", jobName, "succeeded", jobInfo.Status.Succeeded, "failed", jobInfo.Status.Failed)
-				return nil
-			}
-			if condition.Type == batchv1.JobFailed && condition.Status == v3.ConditionTrue {
-				slog.Error("site shell job condition failed", "domain", argsValue.Domain, "job", jobName, "message", condition.Message, "reason", condition.Reason, "succeeded", jobInfo.Status.Succeeded, "failed", jobInfo.Status.Failed)
-				return fmt.Errorf("site shell job %s failed: %s", jobName, condition.Message)
-			}
-		}
-
-		if time.Now().After(deadline) {
-			slog.Error("site shell job wait timed out", "domain", argsValue.Domain, "job", jobName, "active", jobInfo.Status.Active, "succeeded", jobInfo.Status.Succeeded, "failed", jobInfo.Status.Failed)
-			return fmt.Errorf("site shell job %s timed out", jobName)
-		}
-		time.Sleep(2 * time.Second)
+		raw = string(decoded)
 	}
+
+	raw = strings.TrimSpace(raw)
+	if raw == "" || raw == "[\"\"]" {
+		return nil, nil
+	}
+
+	commands := make([]string, 0)
+	if err := json.Unmarshal([]byte(raw), &commands); err != nil {
+		return nil, err
+	}
+	if len(commands) == 1 && commands[0] == "" {
+		return nil, nil
+	}
+	return commands, nil
 }
 
-func getSiteManagerService() site_manager.SiteManagerService {
-	return site_manager.SiteManagerService{
-		BaseUrl: "http://w7-sitemanager-site-manager.default.svc.cluster.local:8000",
+func parseShells(rawBase64 string) ([]logic.SiteShell, error) {
+	rawBase64 = strings.TrimSpace(rawBase64)
+	if rawBase64 == "" || rawBase64 == "{}" || rawBase64 == "null" {
+		slog.Info("site shell config empty", "domain", argsValue.Domain, "operation", argsValue.Operation)
+		return nil, nil
 	}
-}
 
-func getPanelService() w7panel.W7PanelService {
-	return w7panel.W7PanelService{
-		BaseUrl: argsValue.W7PanelDomain,
-		Token:   argsValue.W7PanelToken,
+	decoded, err := base64.StdEncoding.DecodeString(rawBase64)
+	if err != nil {
+		slog.Error("decode site shell config failed", "domain", argsValue.Domain, "operation", argsValue.Operation, "err", err)
+		return nil, err
 	}
+
+	shells := make([]logic.SiteShell, 0)
+	if err := json.Unmarshal(decoded, &shells); err != nil {
+		slog.Error("parse site shell config failed", "domain", argsValue.Domain, "operation", argsValue.Operation, "err", err)
+		return nil, err
+	}
+	slog.Info("site shell config parsed", "domain", argsValue.Domain, "operation", argsValue.Operation, "shell_count", len(shells))
+	return shells, nil
 }

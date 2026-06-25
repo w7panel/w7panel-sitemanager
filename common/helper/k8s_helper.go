@@ -1,68 +1,17 @@
-package command
+package helper
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
 
 	v1 "k8s.io/api/apps/v1"
-	v3 "k8s.io/api/core/v1"
 )
 
-func parseStartParamsEnv(raw string) ([]v3.EnvVar, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "{}" || raw == "null" {
-		return nil, nil
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(raw)
-	if err != nil {
-		return nil, err
-	}
-
-	envMap := make(map[string]string)
-	if err := json.Unmarshal(decoded, &envMap); err != nil {
-		return nil, err
-	}
-
-	env := make([]v3.EnvVar, 0, len(envMap))
-	for name, value := range envMap {
-		if name == "" {
-			continue
-		}
-		env = append(env, v3.EnvVar{
-			Name:  name,
-			Value: value,
-		})
-	}
-	return env, nil
-}
-
-func parseCommands(raw, rawBase64 string) ([]string, error) {
-	rawBase64 = strings.TrimSpace(rawBase64)
-	if rawBase64 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(rawBase64)
-		if err != nil {
-			return nil, err
-		}
-		raw = string(decoded)
-	}
-
-	raw = strings.TrimSpace(raw)
-	if raw == "" || raw == "[\"\"]" {
-		return nil, nil
-	}
-
-	commands := make([]string, 0)
-	if err := json.Unmarshal([]byte(raw), &commands); err != nil {
-		return nil, err
-	}
-	if len(commands) == 1 && commands[0] == "" {
-		return nil, nil
-	}
-	return commands, nil
+type YamlCopyRule struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 // parsePath 将路径字符串解析为部分列表
@@ -81,7 +30,7 @@ func parseArrayPart(part string) (key string, index string, ok bool) {
 	return part[:start], part[start+1 : end], true
 }
 
-func deploymentToMap(deploy *v1.Deployment) (map[string]interface{}, error) {
+func DeploymentToMap(deploy *v1.Deployment) (map[string]interface{}, error) {
 	// 1. 序列化为 JSON 字节流
 	// 注意：K8s 的结构体通常带有 json 标签，Marshal 会自动处理字段名转换
 	jsonData, err := json.Marshal(deploy)
@@ -99,7 +48,7 @@ func deploymentToMap(deploy *v1.Deployment) (map[string]interface{}, error) {
 	return result, nil
 }
 
-func mapToDeployment(deploy map[string]interface{}) (*v1.Deployment, error) {
+func MapToDeployment(deploy map[string]interface{}) (*v1.Deployment, error) {
 	// 1. 序列化为 JSON 字节流
 	// 注意：K8s 的结构体通常带有 json 标签，Marshal 会自动处理字段名转换
 	jsonData, err := json.Marshal(deploy)
@@ -275,7 +224,7 @@ func setValueByPath(root map[string]interface{}, path string, value interface{})
 	}
 }
 
-func copyYamlData(fromYamlData map[string]interface{}, toYamlData map[string]interface{}, rules []YamlCopyRule) map[string]interface{} {
+func CopyYamlData(fromYamlData map[string]interface{}, toYamlData map[string]interface{}, rules []YamlCopyRule) map[string]interface{} {
 	// 2. 遍历并应用每一条规则
 	for _, rule := range rules {
 		if rule.Source == "" || rule.Target == "" {
@@ -294,4 +243,28 @@ func copyYamlData(fromYamlData map[string]interface{}, toYamlData map[string]int
 	}
 
 	return toYamlData
+}
+
+func SanitizeK8sName(name string) string {
+	name = strings.ToLower(strings.ReplaceAll(name, "_", "-"))
+	var builder strings.Builder
+	lastDash := false
+	for _, ch := range name {
+		valid := (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9')
+		if valid {
+			builder.WriteRune(ch)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			builder.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	cleaned := strings.Trim(builder.String(), "-")
+	if len(cleaned) > 63 {
+		cleaned = strings.Trim(cleaned[:63], "-")
+	}
+	return cleaned
 }
