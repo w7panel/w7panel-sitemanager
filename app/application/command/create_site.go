@@ -18,7 +18,6 @@ type appCommandArgs struct {
 	EnvironmentName     string
 	EnvironmentVersion  string
 	EnvironmentLanguage string
-	Operation           string
 	CodeDownloadUrl     string
 	Domain              string
 	K8sAppName          string
@@ -46,7 +45,6 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.EnvironmentName, "name", "", "environment name")
 	cmd.Flags().StringVar(&argsValue.EnvironmentLanguage, "language", "", "environment language")
 	cmd.Flags().StringVar(&argsValue.EnvironmentVersion, "version", "", "environment version")
-	cmd.Flags().StringVar(&argsValue.Operation, "operation", "install", "operation type")
 	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
 	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
@@ -76,7 +74,7 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		panic(err)
 	}
 
-	if argsValue.Operation == "upgrade" && siteInfo != nil {
+	if siteInfo != nil {
 		err := siteManagerService.UpdateSite(site_manager.UpdateSiteReq{
 			Id:              siteInfo.Site.Id,
 			Domain:          strings.Split(siteInfo.Site.Domain, ","),
@@ -93,7 +91,7 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 			}
 			panic(err)
 		}
-		slog.Info("站点环境更新成功", "domain", argsValue.Domain, "environment_id", environmentId)
+		slog.Info("站点已存在，更新站点环境成功", "domain", argsValue.Domain, "environment_id", environmentId)
 	} else {
 		err := siteManagerService.CreateSite(site_manager.CreateSiteReq{
 			Domain:          []string{argsValue.Domain},
