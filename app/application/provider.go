@@ -61,7 +61,6 @@ func (p Provider) RegisterHttpRoutes(server *httpServer.Server) {
 		root.Match([]string{"POST", "OPTIONS"}, "/site/list", middleware.Auth{}.Process, controller.Site{}.List)
 		root.Match([]string{"POST", "OPTIONS"}, "/site/create", middleware.Auth{}.Process, controller.Site{}.Create)
 		root.Match([]string{"POST", "OPTIONS"}, "/site/update", middleware.Auth{}.Process, controller.Site{}.Update)
-		root.Match([]string{"POST", "OPTIONS"}, "/site/update-code", middleware.Auth{}.Process, controller.Site{}.UpdateCode)
 		root.Match([]string{"POST", "OPTIONS"}, "/site/delete", middleware.Auth{}.Process, controller.Site{}.Delete)
 		root.Match([]string{"POST", "OPTIONS"}, "/site/info", middleware.Auth{}.Process, controller.Site{}.Info)
 

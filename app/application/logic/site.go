@@ -24,7 +24,7 @@ func (l Site) GetSiteById(id int32) *entity.Site {
 	return curSite
 }
 
-func (l Site) InstallSite(site entity.Site, codeDownloadUrl string) error {
+func (l Site) InstallSite(site entity.Site) error {
 	environment := SiteEnvironment{}.GetEnvironmentById(site.EnvironmentID)
 	if environment == nil {
 		return errors.New("站点环境异常")
@@ -34,7 +34,7 @@ func (l Site) InstallSite(site entity.Site, codeDownloadUrl string) error {
 		return err
 	}
 
-	return l.InstallSiteCode(site, codeDownloadUrl)
+	return nil
 }
 
 func (l Site) InstallSiteCode(site entity.Site, codeDownloadUrl string) error {

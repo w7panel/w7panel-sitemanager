@@ -1,6 +1,7 @@
 FROM alpine
 
-RUN apk --no-cache add zip
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories \
+  && apk --no-cache add ca-certificates curl jq zip
 ENV TZ=Asia/Shanghai
 
 COPY ./docker /home/environment

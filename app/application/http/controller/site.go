@@ -73,9 +73,16 @@ func (c Site) Create(ctx *gin.Context) {
 		return
 	}
 
-	err = logic.Site{}.InstallSite(*curSite, params.CodeDownloadUrl)
+	err = logic.Site{}.InstallSite(*curSite)
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("install site failed: %v", err), "params", params)
+	}
+	if params.CodeDownloadUrl != "" {
+		err = logic.Site{}.InstallSiteCode(*curSite, params.CodeDownloadUrl)
+		if err != nil {
+			c.JsonResponseWithServerError(ctx, err)
+			return
+		}
 	}
 
 	c.JsonResponseWithoutError(ctx, map[string]interface{}{
@@ -86,11 +93,12 @@ func (c Site) Create(ctx *gin.Context) {
 
 func (c Site) Update(ctx *gin.Context) {
 	type ParamsValidate struct {
-		Id            int      `json:"id" binding:"required"`
-		Domain        []string `json:"domain" binding:"required"`
-		RootDir       string   `json:"root_dir" binding:"required"`
-		Remark        string   `json:"remark"`
-		EnvironmentId int      `json:"environment_id" binding:"required"`
+		Id              int      `json:"id" binding:"required"`
+		Domain          []string `json:"domain" binding:"required"`
+		RootDir         string   `json:"root_dir" binding:"required"`
+		Remark          string   `json:"remark"`
+		EnvironmentId   int      `json:"environment_id" binding:"required"`
+		CodeDownloadUrl string   `json:"code_download_url"`
 	}
 	params := ParamsValidate{}
 	if !c.Validate(ctx, &params) {
@@ -159,47 +167,18 @@ func (c Site) Update(ctx *gin.Context) {
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("install site failed: %v", err), "params", params)
 	}
-
-	c.JsonResponseWithoutError(ctx, map[string]interface{}{
-		"site_environment": setEnvironment,
-		"site_id":          curSite.ID,
-	})
-}
-
-func (c Site) UpdateCode(ctx *gin.Context) {
-	type ParamsValidate struct {
-		Domain          string            `json:"domain" binding:"required"`
-		CodeDownloadUrl string            `json:"code_download_url" binding:"required"`
-		Ext             *accessor.SiteExt `json:"ext"`
-	}
-	params := ParamsValidate{}
-	if !c.Validate(ctx, &params) {
-		return
-	}
-
-	curSite, _ := dao.Q.Site.Where(dao.Q.Site.Domain.Eq(params.Domain)).First()
-	if curSite == nil {
-		c.JsonResponseWithServerError(ctx, errors.New("site not found"))
-		return
-	}
-
-	err := logic.Site{}.InstallSiteCode(*curSite, params.CodeDownloadUrl)
-	if err != nil {
-		c.JsonResponseWithServerError(ctx, err)
-		return
-	}
-
-	if params.Ext != nil {
-		_, err = dao.Q.Site.Where(dao.Q.Site.ID.Eq(curSite.ID)).Updates(entity.Site{
-			Ext: *params.Ext,
-		})
+	if params.CodeDownloadUrl != "" {
+		err = logic.Site{}.InstallSiteCode(updatedSite, params.CodeDownloadUrl)
 		if err != nil {
 			c.JsonResponseWithServerError(ctx, err)
 			return
 		}
 	}
 
-	c.JsonSuccessResponse(ctx)
+	c.JsonResponseWithoutError(ctx, map[string]interface{}{
+		"site_environment": setEnvironment,
+		"site_id":          curSite.ID,
+	})
 }
 
 func (c Site) Delete(ctx *gin.Context) {
