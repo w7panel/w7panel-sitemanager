@@ -17,16 +17,6 @@ func GetRandomString(n int) string {
 	return string(result)
 }
 
-func GetRandomStringNotContainsNumber(n int) string {
-	str := "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	bytes := []byte(str)
-	var result []byte
-	for i := 0; i < n; i++ {
-		result = append(result, bytes[rand.Intn(len(bytes))])
-	}
-	return string(result)
-}
-
 func FileExists(path string) bool {
 	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
