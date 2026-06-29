@@ -233,7 +233,7 @@ import { defineAsyncComponent } from 'vue';
 import myAxios from "@/utils/index";
 import panelAxios from "@/utils/panel"
 import { ElMessage } from 'element-plus';
-import { reloadEnvironment, envLog, terminal, getPods, fillData } from "./utils";
+import { reloadEnvironment, envLog, terminal, getPods, fillData, emitWujieEvent } from "./utils";
 import TooltipButton from "@/components/TooltipButton";
 
 const defaultLang = window.__WUJIE_RAW_WINDOW__?.localStorage.getItem('activeLangName') || 'php'
@@ -352,7 +352,7 @@ export default {
       this.getData(1)
     },
     installEnvironment() {
-      window.$wujie?.bus.$emit('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.activeLang.identifie}`)
+      emitWujieEvent('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.activeLang.identifie}`)
       let timer = null
       timer = setInterval(() => {
         this.getAppConfig(this.activeLang.identifie).then(res => {
@@ -424,7 +424,7 @@ export default {
         this.$message.warning('环境未启动，请检查站点启动命令')
         return
       }
-      window.$wujie.bus.$emit("openFile", {
+      emitWujieEvent("openFile", {
         kind: 'deployments',
         appname: site.environment_app_name?.replace(/_/g, '-'),
         path: '/www/wwwroot/' + site.root_dir
@@ -438,7 +438,7 @@ export default {
     },
     shortcut(data) {
       const name = this.panelDomainList.find(item => item.domain === data.domain[0].domain)?.name
-      window.$wujie.bus.$emit("domainCert", {
+      emitWujieEvent("domainCert", {
         domainName: name
       });
     },

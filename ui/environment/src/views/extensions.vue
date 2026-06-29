@@ -75,6 +75,7 @@
 import panelAxios from "@/utils/panel";
 import { buildWriteFileCommand } from "@/utils/shell";
 import { parseExtensions, parseTemplate, appendUnlimitedStatus } from "./php_environment";
+import { emitWujieEvent } from "./utils";
 import { Check as ElIconCheck, Close as ElIconClose } from '@element-plus/icons-vue'
 
 export default {
@@ -215,7 +216,7 @@ export default {
                 this.addExtensionsLoading = true
                 try {
                     await new Promise((resolve) => {
-                        window.$wujie.bus.$emit('uploadFile', {
+                        emitWujieEvent('uploadFile', {
                             pid: {
                                 namespace: 'default',
                                 HostIp: this.hostIP,

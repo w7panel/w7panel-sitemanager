@@ -177,7 +177,7 @@ import Extensions from './extensions.vue';
 import DisableFunctions from './disable-functions.vue';
 import panelAxios from "@/utils/panel";
 import { buildSedUpdateCommand, buildWriteFileCommand } from "@/utils/shell";
-import { reloadEnvironment } from './utils'
+import { reloadEnvironment, emitWujieEvent } from './utils'
 import { applyEnvironmentBuildImage } from "./json";
 const Editor = defineAsyncComponent(() => import('./editor.vue'))
 export default {
@@ -531,7 +531,7 @@ export default {
             this.silentBuildCallback = options.onComplete || null
             const pushImageName = applyEnvironmentBuildImage('registry.local.w7.cc', this.imageName);
             this.pushImageName = pushImageName
-            window.$wujie.bus.$emit('buildContainerImage', {
+            emitWujieEvent('buildContainerImage', {
                 podName: this.podName,
                 cmd: (this.customCommands ? "sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; " + this.customCommands + ';' : '') + (options.installCommand || ''),
                 containerName: this.containerName,
