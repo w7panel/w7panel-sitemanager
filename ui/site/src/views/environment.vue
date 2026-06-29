@@ -160,7 +160,7 @@
 import myAxios from "@/utils/index";
 import panelAxios from "@/utils/panel"
 import TooltipButton from "@/components/TooltipButton.vue"
-import { reloadEnvironment, envLog, terminal, getPods, fillData } from "./utils"
+import { reloadEnvironment, envLog, terminal, getPods, fillData, emitWujieEvent } from "./utils"
 export default {
   name: "zpk_registry",
   data() {
@@ -384,7 +384,7 @@ export default {
       })
     },
     installEnvironment() {
-      window.$wujie?.bus.$emit('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.type}`)
+      emitWujieEvent('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.type}`)
       return new Promise((res) => {
         let timer = null
         timer = setInterval(() => {
@@ -515,7 +515,7 @@ export default {
     },
     config(row) {
       const formatIMageName = row.imageName.replace(/\//g, 'W7IMAGENAMESLASH')
-      window.$wujie?.bus?.$emit('openApp', {
+      emitWujieEvent('openApp', {
         title: '环境配置',
         appgroup: row.group,
         path: `#/${row.app_name.replace(/_/g, '-')}/${formatIMageName}/${row.version}`,

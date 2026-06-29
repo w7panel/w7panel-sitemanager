@@ -1,5 +1,15 @@
 import panelAxios from "@/utils/panel"
 
+export const emitWujieEvent = (eventName, ...args) => {
+    const handles = window.$wujie?.props?.handles
+    const handle = handles?.[eventName]
+    if (typeof handle === 'function') {
+        return handle.apply(handles, args)
+    }
+
+    return window.$wujie?.bus?.$emit?.(eventName, ...args)
+}
+
 export const reloadEnvironment = (environmentName) => {
     return panelAxios.patch("/apis/apps/v1/namespaces/default/deployments/" + environmentName, {
         spec: {
@@ -13,7 +23,7 @@ export const reloadEnvironment = (environmentName) => {
 }
 
 export const envLog = (environmentName, imageName, imageList) => {
-    window.$wujie.bus.$emit('podLog', {
+    emitWujieEvent('podLog', {
         name: environmentName,
         container: imageName,
         containerList: imageList
@@ -21,7 +31,7 @@ export const envLog = (environmentName, imageName, imageList) => {
 }
 
 export const terminal = (environmentName, imageName) => {
-    window.$wujie.bus.$emit('openPage', {
+    emitWujieEvent('openPage', {
         title: '终端命令',
         src: `/dialog/pod-webshell?pod=${imageName}&namespace=default&containerName=${environmentName}&type=bin/sh`
     })
