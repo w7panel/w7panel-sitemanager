@@ -22,7 +22,6 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	gorm.io/gen v0.3.23
 	gorm.io/plugin/dbresolver v1.3.0
-	k8s.io/api v0.34.1
 	k8s.io/client-go v0.34.1
 )
 
@@ -113,6 +112,7 @@ require (
 	gorm.io/datatypes v1.1.1-0.20230130040222-c43177d3cf8c // indirect
 	gorm.io/driver/mysql v1.5.1-0.20230509030346-3715c134c25b // indirect
 	gorm.io/hints v1.1.0 // indirect
+	k8s.io/api v0.34.1 // indirect
 	k8s.io/apimachinery v0.34.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
