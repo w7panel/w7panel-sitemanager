@@ -52,7 +52,7 @@ func (l Site) InstallSiteCode(site entity.Site, codeDownloadUrl string) error {
 		if err != nil {
 			return err
 		}
-		slog.Info("download code_download_url:", "path", codeDownloadUrl)
+		slog.Info("download code_download_url:", "path", codeDownloadUrl, "save_path", savePath, "absolute_root_dir", absoluteRootDir)
 		defer os.Remove(savePath)
 		err = helper.Unzip(savePath, absoluteRootDir)
 		if err != nil {

@@ -2,11 +2,13 @@ package command
 
 import (
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 	"github.com/w7panel/w7panel-sitemanager/common/service/site_manager"
+	"github.com/w7panel/w7panel-sitemanager/common/service/zpk"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/console"
 )
 
@@ -73,6 +75,17 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	if err != nil {
 		panic(err)
 	}
+
+	urlInfo, err := url.Parse(argsValue.CodeDownloadUrl)
+	if err != nil {
+		panic(err)
+	}
+	//触发 info 接口， 才能从 downloadurl 下载文件
+	zpkService := zpk.ZpkService{
+		BaseUrl: urlInfo.Scheme + "://" + urlInfo.Host,
+	}
+	zpkInfo, err := zpkService.GetZpkInfo(argsValue.AppName)
+	slog.Info("get zpk info", "info", zpkInfo, "err", err, "name", argsValue.AppName)
 
 	if siteInfo != nil {
 		err := siteManagerService.UpdateSite(site_manager.UpdateSiteReq{
