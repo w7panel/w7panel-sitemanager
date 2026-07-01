@@ -24,7 +24,6 @@ type appCommandArgs struct {
 	Domain              string
 	K8sAppName          string
 	K8sEnvAppName       string
-	EnvironmentId       int
 	NginxVhostTemplate  string
 	EnableSsl           bool
 }
@@ -51,7 +50,6 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
 	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
 	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
-	cmd.Flags().IntVar(&argsValue.EnvironmentId, "environment-id", 0, "site manager environment id")
 	cmd.Flags().StringVar(&argsValue.NginxVhostTemplate, "nginx-vhost-template", "", "nginx vhost template")
 	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
 }
@@ -130,9 +128,6 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 }
 
 func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, siteInfo *site_manager.SiteInfoResp) (int, bool, error) {
-	if argsValue.EnvironmentId > 0 {
-		return argsValue.EnvironmentId, false, nil
-	}
 	if siteInfo != nil && isSameSiteEnvironment(siteInfo.SiteEnvironment) && siteInfo.SiteEnvironment.Id > 0 {
 		return siteInfo.SiteEnvironment.Id, false, nil
 	}
