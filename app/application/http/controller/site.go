@@ -77,12 +77,10 @@ func (c Site) Create(ctx *gin.Context) {
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("install site failed: %v", err), "params", params)
 	}
-	if params.CodeDownloadUrl != "" {
-		err = logic.Site{}.InstallSiteCode(*curSite, params.CodeDownloadUrl)
-		if err != nil {
-			c.JsonResponseWithServerError(ctx, err)
-			return
-		}
+	err = logic.Site{}.InstallSiteCode(*curSite, params.CodeDownloadUrl)
+	if err != nil {
+		c.JsonResponseWithServerError(ctx, err)
+		return
 	}
 
 	c.JsonResponseWithoutError(ctx, map[string]interface{}{
@@ -167,12 +165,10 @@ func (c Site) Update(ctx *gin.Context) {
 	if err != nil {
 		slog.ErrorContext(ctx, fmt.Sprintf("install site failed: %v", err), "params", params)
 	}
-	if params.CodeDownloadUrl != "" {
-		err = logic.Site{}.InstallSiteCode(updatedSite, params.CodeDownloadUrl)
-		if err != nil {
-			c.JsonResponseWithServerError(ctx, err)
-			return
-		}
+	err = logic.Site{}.InstallSiteCode(*curSite, params.CodeDownloadUrl)
+	if err != nil {
+		c.JsonResponseWithServerError(ctx, err)
+		return
 	}
 
 	c.JsonResponseWithoutError(ctx, map[string]interface{}{
