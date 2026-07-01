@@ -91,24 +91,26 @@ func (l Site) modifyNginx(oldSite entity.Site, updatedSite entity.Site) error {
 		return errors.New("站点环境异常")
 	}
 
-	updatedSiteName := strings.ReplaceAll(strings.ReplaceAll(updatedSite.Domain, "http://", ""), "https://", "")
+	if oldSite.Domain != updatedSite.Domain {
+		updatedSiteName := strings.ReplaceAll(strings.ReplaceAll(updatedSite.Domain, "http://", ""), "https://", "")
 
-	serverNamePattern := `(?m)^\s*server_name\s+[^;]+;`
-	serverNameRe := regexp.MustCompile(serverNamePattern)
-	if !serverNameRe.MatchString(curNginxVhost) {
-		return fmt.Errorf("server_name directive not found")
-	}
-	newServerNameLine := "    server_name " + strings.ReplaceAll(updatedSiteName, ",", " ") + ";"
-	curNginxVhost = serverNameRe.ReplaceAllString(curNginxVhost, newServerNameLine)
+		serverNamePattern := `(?m)^\s*server_name\s+[^;]+;`
+		serverNameRe := regexp.MustCompile(serverNamePattern)
+		if !serverNameRe.MatchString(curNginxVhost) {
+			return fmt.Errorf("server_name directive not found")
+		}
 
-	rootPattern := `(?m)^\s*root\s+` + regexp.QuoteMeta(oldSiteRootDir) + `\s*;`
-	rootRe := regexp.MustCompile(rootPattern)
-	// 检查是否存在，避免静默失败
-	if !rootRe.MatchString(curNginxVhost) {
-		// 这里可以选择报错或记录警告，视业务严格程度而定
-		return fmt.Errorf("old root directory not found in config")
+		newServerNameLine := "    server_name " + strings.ReplaceAll(updatedSiteName, ",", " ") + ";"
+		curNginxVhost = serverNameRe.ReplaceAllString(curNginxVhost, newServerNameLine)
 	}
-	curNginxVhost = rootRe.ReplaceAllString(curNginxVhost, "    root "+updatedSiteRootDir+";")
+
+	if oldSiteRootDir != updatedSiteRootDir {
+		var rootDirReplaced bool
+		curNginxVhost, rootDirReplaced = replaceNginxRootDirReferences(curNginxVhost, oldSiteRootDir, updatedSiteRootDir)
+		if !rootDirReplaced {
+			return fmt.Errorf("old root directory not found in config")
+		}
+	}
 
 	curNginxVhost = strings.ReplaceAll(curNginxVhost, oldSiteEnvironment.AppName, updatedSiteEnvironment.AppName)
 
@@ -124,6 +126,16 @@ func (l Site) modifyNginx(oldSite entity.Site, updatedSite entity.Site) error {
 	}
 
 	return nil
+}
+
+func replaceNginxRootDirReferences(config string, oldRootDir string, updatedRootDir string) (string, bool) {
+	if oldRootDir == "" {
+		return config, false
+	}
+
+	rootDirRe := regexp.MustCompile(`(^|[^A-Za-z0-9._/-])` + regexp.QuoteMeta(oldRootDir) + `(/|[:;"'\s]|$)`)
+	updatedConfig := rootDirRe.ReplaceAllString(config, "${1}"+updatedRootDir+"${2}")
+	return updatedConfig, updatedConfig != config
 }
 
 func (l Site) UnInstallSite(site entity.Site, removeSiteRootDir bool) {
