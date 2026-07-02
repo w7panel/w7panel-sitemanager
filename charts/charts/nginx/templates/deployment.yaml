@@ -43,35 +43,17 @@ spec:
           args:
             - |
               CONF_PATH="{{.Values.global.NGINX_DIR}}/conf.d"
-              ETC_PATH="{{.Values.global.NGINX_DIR}}/etc"
+              NGINX_CONF="/etc/nginx/nginx.conf"
               mkdir -p "$CONF_PATH"
-              mkdir -p "$ETC_PATH"
-
-              # 复制 nginx 配置文件
-              if [ -d "$ETC_PATH" ] && [ "$(ls -A $ETC_PATH)" ]; then
-                echo "Copying nginx configs from $ETC_PATH to /etc/nginx/"
-                cp -r $ETC_PATH/* /etc/nginx/
-              else
-                echo "No config files found in $ETC_PATH"
-              fi
-
-              cp /etc/nginx/nginx.conf $ETC_PATH/
-
-              # 复制 nginx vhost 配置文件
-              if [ -d "$CONF_PATH" ] && [ "$(ls -A $CONF_PATH)" ]; then
-                echo "Copying nginx vhost configs from $CONF_PATH to /etc/nginx/conf.d"
-                cp -r $CONF_PATH/* /etc/nginx/conf.d/
-              else
-                echo "No config vhost files found in $CONF_PATH"
-              fi
-
 
               DEFAULT_WORKER=2
-              NGINX_CONF=$(nginx -t 2>&1 | grep 'configuration file' | head -n1 | sed 's/.*file //;s/ .*//')
               HOST_CPU=$(grep -c '^processor' /proc/cpuinfo)
               FINAL_WORKER=${NGINX_WORKER_PROCESSES:-$DEFAULT_WORKER}
               [ "$FINAL_WORKER" -eq "$HOST_CPU" ] && FINAL_WORKER=$DEFAULT_WORKER
               sed -i "s/\(worker_processes\).*;/\1 $FINAL_WORKER;/" "$NGINX_CONF"
+
+              grep -q "include $CONF_PATH/\*.conf;" "$NGINX_CONF" || \
+              sed -i "/include \/etc\/nginx\/conf.d\/\*.conf;/a\    include $CONF_PATH/*.conf;" "$NGINX_CONF"
 
               nginx -g 'daemon off;'
           env:
