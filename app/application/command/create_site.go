@@ -13,8 +13,6 @@ import (
 )
 
 type appCommandArgs struct {
-	W7PanelDomain       string
-	W7PanelToken        string
 	AppName             string
 	EnvironmentTitle    string
 	EnvironmentName     string
@@ -39,8 +37,6 @@ func (c SiteCreate) GetName() string {
 }
 
 func (c SiteCreate) Configure(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&argsValue.W7PanelDomain, "w7panel-domain", "", "w7panel domain")
-	cmd.Flags().StringVar(&argsValue.W7PanelToken, "w7panel-token", "", "w7panel token")
 	cmd.Flags().StringVar(&argsValue.AppName, "app_name", "", "app name")
 	cmd.Flags().StringVar(&argsValue.EnvironmentTitle, "title", "", "environment title")
 	cmd.Flags().StringVar(&argsValue.EnvironmentName, "name", "", "environment name")
