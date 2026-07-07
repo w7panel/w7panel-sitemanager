@@ -41,6 +41,83 @@ export const getPods = (environmentName) => {
     return panelAxios.get("/api/v1/namespaces/default/pods?labelSelector=app=" + environmentName)
 }
 
+export const isContainerReady = (containerStatus) => {
+    if (!containerStatus) {
+        return false
+    }
+
+    return containerStatus.ready && containerStatus.started !== false && !!containerStatus.state?.running
+}
+
+export const isPodReadyForDeployment = (pod, containers) => {
+    if (!pod || !containers?.length) {
+        return false
+    }
+
+    if (pod.metadata?.deletionTimestamp || pod.status?.phase !== 'Running') {
+        return false
+    }
+
+    const desiredContainers = containers
+        .filter(container => container?.name)
+        .map(container => ({
+            name: container.name,
+            image: container.image
+        }))
+
+    if (!desiredContainers.length) {
+        return false
+    }
+
+    const podReady = (pod.status?.conditions || []).some(condition => {
+        return condition.type === 'Ready' && condition.status === 'True'
+    })
+
+    if (!podReady) {
+        return false
+    }
+
+    const podSpecContainers = pod.spec?.containers || []
+    const containerStatuses = pod.status?.containerStatuses || []
+
+    return desiredContainers.every((container) => {
+        const podContainer = podSpecContainers.find(item => item.name === container.name)
+        const containerStatus = containerStatuses.find(item => item.name === container.name)
+
+        if (!podContainer || !containerStatus) {
+            return false
+        }
+
+        if (container.image && podContainer.image !== container.image) {
+            return false
+        }
+
+        return isContainerReady(containerStatus)
+    })
+}
+
+export const getEnvironmentStatus = (deployment, pods) => {
+    const replicas = deployment?.spec?.replicas ?? 0
+    if (replicas <= 0) {
+        return 0
+    }
+
+    const observedGeneration = deployment?.status?.observedGeneration
+    const generation = deployment?.metadata?.generation
+    if (generation && observedGeneration && observedGeneration < generation) {
+        return 0
+    }
+
+    const containers = deployment?.spec?.template?.spec?.containers || []
+    if (!containers.length) {
+        return 0
+    }
+
+    const readyPods = (pods || []).filter(pod => isPodReadyForDeployment(pod, containers))
+
+    return pods?.length > 0 && readyPods.length === pods.length ? 1 : 2
+}
+
 const PATH_TOKEN_REGEX = /[^.[\]]+|\[(?:(-?\d+)|'((?:\\.|[^'])*)'|"((?:\\.|[^"])*)")\]/g
 
 const isPlainObject = (value) => {

@@ -160,7 +160,7 @@
 import myAxios from "@/utils/index";
 import panelAxios from "@/utils/panel"
 import TooltipButton from "@/components/TooltipButton.vue"
-import { reloadEnvironment, envLog, terminal, getPods, fillData, emitWujieEvent } from "./utils"
+import { reloadEnvironment, envLog, terminal, getPods, fillData, emitWujieEvent, getEnvironmentStatus } from "./utils"
 export default {
   name: "zpk_registry",
   data() {
@@ -234,7 +234,7 @@ export default {
       item.imageName = deployment?.spec?.template?.spec?.containers?.[0]?.image || ''
       item.containers = deployment?.spec?.template?.spec?.containers || []
       item.group = deployment?.metadata?.annotations?.["w7.cc/group-name"] || ''
-      item.status = deployment ? this.getEnvironmentStatus(deployment, pods) : 0
+      item.status = deployment ? getEnvironmentStatus(deployment, pods) : 0
       return item
     },
     pollEnvironmentStatus(item, fetchVersion) {
@@ -258,7 +258,7 @@ export default {
 
           const deployment = deploymentRes?.status === 'fulfilled' ? deploymentRes.value?.data : null
           const pods = podRes?.status === 'fulfilled' ? podRes.value?.data?.items || [] : []
-          const status = deployment ? this.getEnvironmentStatus(deployment, pods) : 0
+          const status = deployment ? getEnvironmentStatus(deployment, pods) : 0
 
           if (status !== 2) {
             const index = this.tableData.findIndex(data => data.id === item.id)
@@ -441,7 +441,7 @@ export default {
             data = fillData(data, autoFillRules, siteManagerData.data)
           }
 
-          name = 'copy-' + this.createName(4) + '-' + this.getVersionIdentifie(app_name, version).replace(/_/g, '-');
+          name = this.getVersionIdentifie(app_name, version).replace(/_/g, '-') + '-' + this.createName(4);
           data.metadata.name = name;
           data.metadata.labels.app = name;
           data.metadata.annotations['w7.cc/create-svc'] = 'true';
@@ -531,80 +531,6 @@ export default {
           panelAxios.delete("/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups/" + group.replace(/_/g, '-'))
         }
       })
-    },
-    isContainerReady(containerStatus) {
-      if (!containerStatus) {
-        return false
-      }
-
-      return containerStatus.ready && containerStatus.started !== false && !!containerStatus.state?.running
-    },
-    isPodReadyForDeployment(pod, containers) {
-      if (!pod || !containers?.length) {
-        return false
-      }
-
-      if (pod.metadata?.deletionTimestamp || pod.status?.phase !== 'Running') {
-        return false
-      }
-
-      const desiredContainers = containers
-        .filter(container => container?.name)
-        .map(container => ({
-          name: container.name,
-          image: container.image
-        }))
-
-      if (!desiredContainers.length) {
-        return false
-      }
-
-      const podReady = (pod.status?.conditions || []).some(condition => {
-        return condition.type === 'Ready' && condition.status === 'True'
-      })
-
-      if (!podReady) {
-        return false
-      }
-
-      const podSpecContainers = pod.spec?.containers || []
-      const containerStatuses = pod.status?.containerStatuses || []
-
-      return desiredContainers.every((container) => {
-        const podContainer = podSpecContainers.find(item => item.name === container.name)
-        const containerStatus = containerStatuses.find(item => item.name === container.name)
-
-        if (!podContainer || !containerStatus) {
-          return false
-        }
-
-        if (container.image && podContainer.image !== container.image) {
-          return false
-        }
-
-        return this.isContainerReady(containerStatus)
-      })
-    },
-    getEnvironmentStatus(deployment, pods) {
-      const replicas = deployment?.spec?.replicas ?? 0
-      if (replicas <= 0) {
-        return 0
-      }
-
-      const observedGeneration = deployment?.status?.observedGeneration
-      const generation = deployment?.metadata?.generation
-      if (generation && observedGeneration && observedGeneration < generation) {
-        return 0
-      }
-
-      const containers = deployment?.spec?.template?.spec?.containers || []
-      if (!containers.length) {
-        return 0
-      }
-
-      const readyPods = (pods || []).filter(pod => this.isPodReadyForDeployment(pod, containers))
-
-      return pods && readyPods.length === pods.length ? 1 : 2
     },
     getData(p, notChangePage) {
       this.clearEnvironmentStatusTimers()

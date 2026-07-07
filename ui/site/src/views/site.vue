@@ -191,7 +191,9 @@
               <el-input v-model="form.remark" :rows="5" type="textarea" />
             </el-form-item>
             <el-form-item>
-              <el-button size="large" type="primary" @click="onSubmit" :loading="loading">确定</el-button>
+              <el-button size="large" type="primary" @click="onSubmit" :loading="submitLoading">
+                {{ newEnvironmentStarting ? '环境创建中' : '确定' }}
+              </el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -233,7 +235,7 @@ import { defineAsyncComponent } from 'vue';
 import myAxios from "@/utils/index";
 import panelAxios from "@/utils/panel"
 import { ElMessage } from 'element-plus';
-import { reloadEnvironment, envLog, terminal, getPods, fillData, emitWujieEvent } from "./utils";
+import { reloadEnvironment, envLog, terminal, getPods, fillData, emitWujieEvent, getEnvironmentStatus } from "./utils";
 import TooltipButton from "@/components/TooltipButton";
 
 const defaultLang = window.__WUJIE_RAW_WINDOW__?.localStorage.getItem('activeLangName') || 'php'
@@ -246,6 +248,8 @@ export default {
     return {
       deleteSiteConfig: false,
       loading: true,
+      submitLoading: false,
+      newEnvironmentStarting: false,
       activeLang: { name: defaultLang },
       activeLangName: defaultLang,
       tab: 'base',
@@ -635,6 +639,8 @@ export default {
       this.activeEnvironment = null
       this.form.remark = ''
       this.isNewEnv = false
+      this.submitLoading = false
+      this.newEnvironmentStarting = false
       this.nginxConfig = ''
       this.visible = true
       this.form.command = ['sh', '-c', '']
@@ -717,7 +723,7 @@ export default {
             const siteManagerData = await this.getAppConfig((window.$wujie?.props?.group || window.$wujie?.props?.releaseName) + '-site-manager')
             data = fillData(data, autoFillRules, siteManagerData)
           }
-          name = 'copy-' + this.createName(4) + '-' + this.getVersionIdentifie(app_name, version).replace(/_/g, '-');
+          name = this.getVersionIdentifie(app_name, version).replace(/_/g, '-') + '-' + this.createName(4);
 
           data.metadata.name = name;
           data.metadata.labels.app = name;
@@ -831,74 +837,118 @@ export default {
         }
       })
     },
+    waitEnvironmentStarted(appName) {
+      const deploymentName = appName.replace(/_/g, '-')
+
+      return new Promise((resolve) => {
+        const checkStatus = () => {
+          Promise.allSettled([
+            panelAxios.get('/apis/apps/v1/namespaces/default/deployments/' + deploymentName),
+            getPods(deploymentName)
+          ]).then(([deploymentRes, podRes]) => {
+            const deployment = deploymentRes?.status === 'fulfilled' ? deploymentRes.value?.data : null
+            const pods = podRes?.status === 'fulfilled' ? podRes.value?.data?.items || [] : []
+
+            if (deployment && getEnvironmentStatus(deployment, pods) === 1) {
+              resolve()
+              return
+            }
+
+            setTimeout(checkStatus, 3000)
+          })
+        }
+
+        checkStatus()
+      })
+    },
     onSubmit() {
       this.$refs.form.validate(async (valid) => {
         if (!valid) {
           return
         }
-        this.loading = true
-        let selectImage = this.images.find(item => item.id === this.form.environment_id)
+        this.submitLoading = true
+        this.newEnvironmentStarting = !this.editId && this.isNewEnv
 
-        let preDomainList = []
-        if (this.editId) {
-          if (this.isNewEnv) {
-            const name = await this.jobCopyEnv(this.activeLang.name + '-' + this.form.environment_id, this.activeLang.identifie, this.form.environment_id)
-            selectImage = this.images.find(item => item.app_name === name)
-            this.form.environment_id = selectImage.id
-          }
-          let imageInfo = await this.getAppConfig(selectImage.app_name)
-          preDomainList = [...this.tableData.find(item => item.id === this.editId).domain]
-          const oldDomain = preDomainList[0]
-          if (this.form.old_environment_id !== this.form.environment_id && this.activeLang.share === false) {
-            const oldImage = this.allImages.find(item => item.id === this.form.old_environment_id)
-            if (oldImage) {
-              await this.clearOldEnvironmentAnnotation(oldImage.app_name)
-            }
-            if (!this.isNewEnv) {
-              const name = await this.jobCopyEnv(selectImage.title, this.activeLang.identifie, selectImage.version)
-              selectImage = this.allImages.find(item => item.app_name === name)
+        try {
+          let selectImage = this.images.find(item => item.id === this.form.environment_id)
+
+          let preDomainList = []
+          if (this.editId) {
+            if (this.isNewEnv) {
+              const name = await this.jobCopyEnv(this.activeLang.name + '-' + this.form.environment_id, this.activeLang.identifie, this.form.environment_id)
+              selectImage = this.images.find(item => item.app_name === name)
+              if (!selectImage) {
+                throw new Error('创建环境失败')
+              }
               this.form.environment_id = selectImage.id
             }
-          } else if (this.activeLang.share === false) {
-            imageInfo = this.attachCommandToEnvironment(imageInfo)
-            await panelAxios.put("/apis/apps/v1/namespaces/default/deployments/" + selectImage.app_name.replace(/_/g, '-'), imageInfo)
-          }
-          myAxios.post('/api/site/update', { id: this.editId, ...this.form, domain: this.form.domain.map(item => (item.isSSL ? 'https://' : 'http://') + item.domain) }).then(() => {
+            let imageInfo = await this.getAppConfig(selectImage.app_name)
+            preDomainList = [...this.tableData.find(item => item.id === this.editId).domain]
+            const oldDomain = preDomainList[0]
+            if (this.form.old_environment_id !== this.form.environment_id && this.activeLang.share === false) {
+              const oldImage = this.allImages.find(item => item.id === this.form.old_environment_id)
+              if (oldImage) {
+                await this.clearOldEnvironmentAnnotation(oldImage.app_name)
+              }
+              if (!this.isNewEnv) {
+                const name = await this.jobCopyEnv(selectImage.title, this.activeLang.identifie, selectImage.version)
+                selectImage = this.allImages.find(item => item.app_name === name)
+                if (!selectImage) {
+                  throw new Error('创建环境失败')
+                }
+                this.form.environment_id = selectImage.id
+              }
+            } else if (this.activeLang.share === false) {
+              imageInfo = this.attachCommandToEnvironment(imageInfo)
+              await panelAxios.put("/apis/apps/v1/namespaces/default/deployments/" + selectImage.app_name.replace(/_/g, '-'), imageInfo)
+            }
+            await myAxios.post('/api/site/update', { id: this.editId, ...this.form, domain: this.form.domain.map(item => (item.isSSL ? 'https://' : 'http://') + item.domain) })
             this.$message.success('操作成功');
             this.getData(1, true);
             this.visible = false
             this.updateDomain(oldDomain, this.form.domain)
             this.reload()
-          })
-          return
-        }
-
-
-        if (this.isNewEnv) {
-          const name = await this.jobCopyEnv(this.activeLang.name + '-' + this.form.environment_id, this.activeLang.identifie, this.form.environment_id)
-          selectImage = this.images.find(item => item.app_name === name)
-          this.form.environment_id = selectImage.id
-        } else if (this.activeLang.share === false) {
-          let imageInfo = await this.getAppConfig(selectImage.app_name)
-          if (imageInfo?.spec?.template?.metadata?.annotations?.['w7.cc/image_used'] === 'true') {
-            const name = await this.jobCopyEnv(selectImage.title, this.activeLang.identifie, selectImage.version)
-            selectImage = this.images.find(item => item.app_name === name)
-            this.form.environment_id = selectImage.id
-          } else {
-            imageInfo = this.attachCommandToEnvironment(imageInfo)
-            await panelAxios.put("/apis/apps/v1/namespaces/default/deployments/" + selectImage.app_name.replace(/_/g, '-'), imageInfo)
+            return
           }
-        }
+
+
+          if (this.isNewEnv) {
+            const name = await this.jobCopyEnv(this.activeLang.name + '-' + this.form.environment_id, this.activeLang.identifie, this.form.environment_id)
+            selectImage = this.images.find(item => item.app_name === name)
+            if (!selectImage) {
+              throw new Error('创建环境失败')
+            }
+            this.form.environment_id = selectImage.id
+            await this.waitEnvironmentStarted(selectImage.app_name)
+          } else if (this.activeLang.share === false) {
+            let imageInfo = await this.getAppConfig(selectImage.app_name)
+            if (imageInfo?.spec?.template?.metadata?.annotations?.['w7.cc/image_used'] === 'true') {
+              const name = await this.jobCopyEnv(selectImage.title, this.activeLang.identifie, selectImage.version)
+              selectImage = this.images.find(item => item.app_name === name)
+              if (!selectImage) {
+                throw new Error('创建环境失败')
+              }
+              this.form.environment_id = selectImage.id
+            } else {
+              imageInfo = this.attachCommandToEnvironment(imageInfo)
+              await panelAxios.put("/apis/apps/v1/namespaces/default/deployments/" + selectImage.app_name.replace(/_/g, '-'), imageInfo)
+            }
+          }
 
 
 
-        myAxios.post('/api/site/create', { ...this.form, domain: this.form.domain.map(item => (item.isSSL ? 'https://' : 'http://') + item.domain) }).then(() => {
+          await myAxios.post('/api/site/create', { ...this.form, domain: this.form.domain.map(item => (item.isSSL ? 'https://' : 'http://') + item.domain) })
           this.$message.success('操作成功');
           this.addDomain(this.form.domain, this.form.isSSL)
           this.getData(1, false);
           this.visible = false
           this.reload()
-        })
+        } catch (error) {
+          this.$message.error(error?.message || '操作失败')
+        } finally {
+          this.submitLoading = false
+          this.newEnvironmentStarting = false
+        }
       })
     },
     reload() {
@@ -919,6 +969,9 @@ export default {
     },
     async jobCopyEnv(title, identifie, version) {
       const name = await this.copy(identifie, version)
+      if (!name) {
+        throw new Error('创建环境失败')
+      }
       await this.createEnvironment({
         title: title + '-副本',
         language: this.activeLang.language || this.activeLang.name,
