@@ -52,6 +52,18 @@ spec:
               value: {{.Values.global.NGINX_WEB_DIR}}
             - name: ENVIRONMENT_SERVER_ROOT
               value: {{.Values.global.SERVER_DIR}}
+            {{- if .Values.webhook.enabled }}
+            - name: W7_SITE_MANAGER_SERVER_TLS_ENABLE
+              value: "true"
+            - name: W7_SITE_MANAGER_SERVER_TLS_PORT
+              value: {{ .Values.webhook.targetPort | quote }}
+            - name: W7_SITE_MANAGER_SERVER_TLS_CERT_FILE
+              value: /home/site-manager/webhook-certs/tls.crt
+            - name: W7_SITE_MANAGER_SERVER_TLS_KEY_FILE
+              value: /home/site-manager/webhook-certs/tls.key
+            - name: WEBHOOK_REMOVE_SITE_ROOT_DIR
+              value: {{ .Values.webhook.removeSiteRootDir | quote }}
+            {{- end }}
           volumeMounts:
             - mountPath: /home/site-manager/db
               name: site-storage
@@ -65,10 +77,20 @@ spec:
             - mountPath: {{.Values.global.SERVER_DIR}}
               name: site-storage
               subPath: server-dir
+            {{- if .Values.webhook.enabled }}
+            - mountPath: /home/site-manager/webhook-certs
+              name: webhook-certs
+              readOnly: true
+            {{- end }}
           ports:
             - name: http
               containerPort: 8000
               protocol: TCP
+            {{- if .Values.webhook.enabled }}
+            - name: webhook
+              containerPort: {{ .Values.webhook.targetPort }}
+              protocol: TCP
+            {{- end }}
           livenessProbe:
             httpGet:
               path: /health
@@ -83,6 +105,11 @@ spec:
         - name: site-storage
           persistentVolumeClaim:
             claimName: {{ .Release.Name }}-site-manager
+        {{- if .Values.webhook.enabled }}
+        - name: webhook-certs
+          secret:
+            secretName: {{ include "site-manager.fullname" . }}-webhook-tls
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

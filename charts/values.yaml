@@ -40,6 +40,14 @@ service:
   type: ClusterIP
   port: 8000
 
+webhook:
+  enabled: false
+  port: 443
+  targetPort: 8443
+  failurePolicy: Ignore
+  timeoutSeconds: 4
+  removeSiteRootDir: true
+
 ingress:
   enabled: true
   className: ""

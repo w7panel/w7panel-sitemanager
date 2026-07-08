@@ -24,6 +24,27 @@ func (l Site) GetSiteById(id int32) *entity.Site {
 	return curSite
 }
 
+func (l Site) DeleteSite(site entity.Site, removeSiteRootDir bool) error {
+	err := dao.Q.Transaction(func(tx *dao.Query) error {
+		if _, err := tx.Site.Where(tx.Site.ID.Eq(site.ID)).Delete(); err != nil {
+			return err
+		}
+		if _, err := tx.SiteSetting.Where(tx.SiteSetting.SiteID.Eq(site.ID)).Delete(); err != nil {
+			return err
+		}
+		if _, err := tx.Environment.Where(tx.Environment.ID.Eq(site.EnvironmentID)).Update(tx.Environment.UsedNum, tx.Environment.UsedNum.Add(-1)); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	l.UnInstallSite(site, removeSiteRootDir)
+	return nil
+}
+
 func (l Site) InstallSite(site entity.Site) error {
 	environment := SiteEnvironment{}.GetEnvironmentById(site.EnvironmentID)
 	if environment == nil {

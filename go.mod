@@ -8,7 +8,7 @@ require (
 	github.com/go-playground/validator/v10 v10.27.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/spf13/viper v1.20.1
-	github.com/we7coreteam/w7-rangine-go/v2 v2.0.5
+	github.com/we7coreteam/w7-rangine-go/v2 v2.0.11
 	gorm.io/driver/sqlite v1.5.5 // indirect
 	gorm.io/gorm v1.25.7-0.20240204074919-46816ad31dde
 )
@@ -22,6 +22,8 @@ require (
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	gorm.io/gen v0.3.23
 	gorm.io/plugin/dbresolver v1.3.0
+	k8s.io/api v0.34.1
+	k8s.io/apimachinery v0.34.1
 	k8s.io/client-go v0.34.1
 )
 
@@ -55,6 +57,14 @@ require (
 	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/gorilla/sessions v1.2.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/jackc/chunkreader/v2 v2.0.1 // indirect
+	github.com/jackc/pgconn v1.13.0 // indirect
+	github.com/jackc/pgio v1.0.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgproto3/v2 v2.3.1 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
+	github.com/jackc/pgtype v1.12.0 // indirect
+	github.com/jackc/pgx/v4 v4.17.2 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.4.4 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
@@ -111,9 +121,8 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/datatypes v1.1.1-0.20230130040222-c43177d3cf8c // indirect
 	gorm.io/driver/mysql v1.5.1-0.20230509030346-3715c134c25b // indirect
+	gorm.io/driver/postgres v1.4.5 // indirect
 	gorm.io/hints v1.1.0 // indirect
-	k8s.io/api v0.34.1 // indirect
-	k8s.io/apimachinery v0.34.1 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20250710124328-f3f2b991d03b // indirect
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397 // indirect

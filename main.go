@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/viper"
 	app2 "github.com/w7panel/w7panel-sitemanager/app/application"
+	"github.com/w7panel/w7panel-sitemanager/app/webhook"
 	"github.com/w7panel/w7panel-sitemanager/common/dao"
 	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 	app "github.com/we7coreteam/w7-rangine-go/v2/src"
@@ -37,6 +38,7 @@ func main() {
 	httpServer := new(http.Provider).Register(newApp.GetConfig(), newApp.GetConsole(), newApp.GetServerManager()).Export()
 	httpServer.Use(middleware.GetPanicHandlerMiddleware())
 	new(app2.Provider).Register(httpServer, newApp.GetConsole())
+	new(webhook.Provider).Register(httpServer)
 
 	newApp.RunConsole()
 }

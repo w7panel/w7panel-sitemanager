@@ -193,30 +193,10 @@ func (c Site) Delete(ctx *gin.Context) {
 		return
 	}
 
-	err := dao.Q.Transaction(func(tx *dao.Query) error {
-		_, err := tx.Site.Where(tx.Site.ID.Eq(int32(params.Id))).Delete()
-		if err != nil {
-			return err
-		}
-
-		_, err = tx.SiteSetting.Where(tx.SiteSetting.SiteID.Eq(int32(params.Id))).Delete()
-		if err != nil {
-			return err
-		}
-
-		_, err = tx.Environment.Where(tx.Environment.ID.Eq(int32(site.EnvironmentID))).Update(tx.Environment.UsedNum, tx.Environment.UsedNum.Add(-1))
-		if err != nil {
-			return err
-		}
-
-		return nil
-	})
+	err := logic.Site{}.DeleteSite(*site, params.RemoveSiteRootDir)
 	if err != nil {
 		c.JsonResponseWithServerError(ctx, err)
 		return
-	}
-	if site != nil {
-		logic.Site{}.UnInstallSite(*site, params.RemoveSiteRootDir)
 	}
 
 	c.JsonSuccessResponse(ctx)

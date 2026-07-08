@@ -1,0 +1,66 @@
+{{- if .Values.webhook.enabled -}}
+{{- $fullname := include "site-manager.fullname" . -}}
+{{- $serviceName := $fullname -}}
+{{- $namespace := .Release.Namespace -}}
+{{- $secretName := printf "%s-webhook-tls" $fullname -}}
+{{- $ca := genCA (printf "%s-webhook-ca" $fullname) 3650 -}}
+{{- $serviceDNS := printf "%s.%s.svc" $serviceName $namespace -}}
+{{- $altNames := list $serviceName $serviceDNS (printf "%s.%s.svc.cluster.local" $serviceName $namespace) -}}
+{{- $cert := genSignedCert $serviceDNS nil $altNames 3650 $ca -}}
+{{- $tlsCrt := $cert.Cert | b64enc -}}
+{{- $tlsKey := $cert.Key | b64enc -}}
+{{- $caCrt := $ca.Cert | b64enc -}}
+{{- $existingSecret := lookup "v1" "Secret" $namespace $secretName -}}
+{{- if and $existingSecret $existingSecret.data (index $existingSecret.data "tls.crt") (index $existingSecret.data "tls.key") (index $existingSecret.data "ca.crt") -}}
+{{- $tlsCrt = index $existingSecret.data "tls.crt" -}}
+{{- $tlsKey = index $existingSecret.data "tls.key" -}}
+{{- $caCrt = index $existingSecret.data "ca.crt" -}}
+{{- end -}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "site-manager.labels" . | nindent 4 }}
+type: kubernetes.io/tls
+data:
+  tls.crt: {{ $tlsCrt | quote }}
+  tls.key: {{ $tlsKey | quote }}
+  ca.crt: {{ $caCrt | quote }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ $fullname }}-appgroup-delete
+  labels:
+    {{- include "site-manager.labels" . | nindent 4 }}
+webhooks:
+  - name: appgroup-delete.site-manager.w7.cc
+    admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        namespace: {{ $namespace }}
+        name: {{ $serviceName }}
+        path: /webhook/appgroups/del
+        port: {{ .Values.webhook.port }}
+      caBundle: {{ $caCrt | quote }}
+    failurePolicy: {{ .Values.webhook.failurePolicy }}
+    matchPolicy: Equivalent
+    namespaceSelector: {}
+    objectSelector: {}
+    reinvocationPolicy: Never
+    rules:
+      - operations:
+          - DELETE
+        apiGroups:
+          - w7panel.w7.com
+        apiVersions:
+          - v1alpha1
+        resources:
+          - appgroups
+        scope: Namespaced
+    sideEffects: None
+    timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
+{{- end }}
