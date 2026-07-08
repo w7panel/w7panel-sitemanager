@@ -3,31 +3,38 @@
 {{- $serviceName := $fullname -}}
 {{- $namespace := .Release.Namespace -}}
 {{- $secretName := printf "%s-webhook-tls" $fullname -}}
-{{- $ca := genCA (printf "%s-webhook-ca" $fullname) 3650 -}}
+{{- $issuerName := printf "%s-webhook-selfsigned" $fullname -}}
+{{- $certificateName := printf "%s-webhook-serving-cert" $fullname -}}
 {{- $serviceDNS := printf "%s.%s.svc" $serviceName $namespace -}}
-{{- $altNames := list $serviceName $serviceDNS (printf "%s.%s.svc.cluster.local" $serviceName $namespace) -}}
-{{- $cert := genSignedCert $serviceDNS nil $altNames 3650 $ca -}}
-{{- $tlsCrt := $cert.Cert | b64enc -}}
-{{- $tlsKey := $cert.Key | b64enc -}}
-{{- $caCrt := $ca.Cert | b64enc -}}
-{{- $existingSecret := lookup "v1" "Secret" $namespace $secretName -}}
-{{- if and $existingSecret $existingSecret.data (index $existingSecret.data "tls.crt") (index $existingSecret.data "tls.key") (index $existingSecret.data "ca.crt") -}}
-{{- $tlsCrt = index $existingSecret.data "tls.crt" -}}
-{{- $tlsKey = index $existingSecret.data "tls.key" -}}
-{{- $caCrt = index $existingSecret.data "ca.crt" -}}
-{{- end -}}
-apiVersion: v1
-kind: Secret
+apiVersion: cert-manager.io/v1
+kind: Issuer
 metadata:
-  name: {{ $secretName }}
+  name: {{ $issuerName }}
   namespace: {{ $namespace }}
   labels:
     {{- include "site-manager.labels" . | nindent 4 }}
-type: kubernetes.io/tls
-data:
-  tls.crt: {{ $tlsCrt | quote }}
-  tls.key: {{ $tlsKey | quote }}
-  ca.crt: {{ $caCrt | quote }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $certificateName }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "site-manager.labels" . | nindent 4 }}
+spec:
+  secretName: {{ $secretName }}
+  duration: 8760h
+  renewBefore: 720h
+  dnsNames:
+    - {{ $serviceName }}
+    - {{ $serviceDNS }}
+    - {{ printf "%s.%s.svc.cluster.local" $serviceName $namespace }}
+  issuerRef:
+    name: {{ $issuerName }}
+    kind: Issuer
+    group: cert-manager.io
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -35,6 +42,8 @@ metadata:
   name: {{ $fullname }}-appgroup-delete
   labels:
     {{- include "site-manager.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s" $namespace $certificateName | quote }}
 webhooks:
   - name: appgroup-delete.site-manager.w7.cc
     admissionReviewVersions:
@@ -45,7 +54,6 @@ webhooks:
         name: {{ $serviceName }}
         path: /webhook/appgroups/del
         port: {{ .Values.webhook.port }}
-      caBundle: {{ $caCrt | quote }}
     failurePolicy: {{ .Values.webhook.failurePolicy }}
     matchPolicy: Equivalent
     namespaceSelector: {}
@@ -61,6 +69,6 @@ webhooks:
         resources:
           - appgroups
         scope: Namespaced
-    sideEffects: None
+    sideEffects: NoneOnDryRun
     timeoutSeconds: {{ .Values.webhook.timeoutSeconds }}
 {{- end }}

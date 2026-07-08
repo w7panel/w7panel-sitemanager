@@ -55,12 +55,14 @@ func (c AppGroup) Delete(ctx *gin.Context) {
 		UID:     review.Request.UID,
 		Allowed: true,
 	}
-	req := *review.Request
-	go func() {
-		if _, err := handleDelete(&req); err != nil {
-			slog.Error("handle appgroup delete webhook error", "err", err)
-		}
-	}()
+	if review.Request.DryRun == nil || !*review.Request.DryRun {
+		req := *review.Request
+		go func() {
+			if _, err := handleDelete(&req); err != nil {
+				slog.Error("handle appgroup delete webhook error", "err", err)
+			}
+		}()
+	}
 
 	ctx.JSON(200, admissionv1.AdmissionReview{
 		TypeMeta: metav1.TypeMeta{
