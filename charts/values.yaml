@@ -41,7 +41,7 @@ service:
   port: 8000
 
 webhook:
-  enabled: false
+  enabled: true
   port: 443
   targetPort: 8443
   failurePolicy: Ignore
