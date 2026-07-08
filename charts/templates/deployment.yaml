@@ -61,6 +61,8 @@ spec:
               value: /home/site-manager/webhook-certs/tls.crt
             - name: W7_SITE_MANAGER_SERVER_TLS_KEY_FILE
               value: /home/site-manager/webhook-certs/tls.key
+            - name: WEBHOOK_ENABLED
+              value: "true"
             - name: WEBHOOK_REMOVE_SITE_ROOT_DIR
               value: {{ .Values.webhook.removeSiteRootDir | quote }}
             {{- end }}

@@ -38,7 +38,7 @@ func main() {
 	httpServer := new(http.Provider).Register(newApp.GetConfig(), newApp.GetConsole(), newApp.GetServerManager()).Export()
 	httpServer.Use(middleware.GetPanicHandlerMiddleware())
 	new(app2.Provider).Register(httpServer, newApp.GetConsole())
-	new(webhook.Provider).Register(httpServer)
+	new(webhook.Provider).Register(httpServer, newApp.GetConfig())
 
 	newApp.RunConsole()
 }
