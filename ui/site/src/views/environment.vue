@@ -500,18 +500,52 @@ export default {
         })
       })
     },
-    del(row) {
-      myAxios.post('/api/environment/delete', {
-        id: row.id
-      }).then(() => {
-        if (row.app_name.match(/\d+$/)) {
-          panelAxios.delete("/apis/apps/v1/namespaces/default/deployments/" + row.app_name.replace(/_/g, '-'))
-          panelAxios.delete("/api/v1/namespaces/default/services/" + row.app_name.replace(/_/g, '-') + '-lb')
+    async deleteEnvironmentResources(row) {
+      const appName = row.app_name?.replace(/_/g, '-')
+      if (!appName) {
+        return
+      }
+
+      const resources = [
+        {
+          name: '环境应用',
+          request: panelAxios.delete("/apis/apps/v1/namespaces/default/deployments/" + appName)
+        },
+        {
+          name: '环境服务',
+          request: panelAxios.delete("/api/v1/namespaces/default/services/" + appName + '-lb')
         }
+      ]
+      const results = await Promise.all(resources.map(item => {
+        return item.request.then(() => {
+          return { name: item.name, error: null }
+        }).catch(error => {
+          return { name: item.name, error }
+        })
+      }))
+      const failed = results.filter(item => item.error && item.error?.response?.status !== 404)
+      if (failed.length > 0) {
+        throw new Error(failed.map(item => item.name).join('、') + '清理失败')
+      }
+    },
+    async del(row) {
+      let environmentDeleted = false
+      try {
+        await myAxios.post('/api/environment/delete', {
+          id: row.id
+        })
+        environmentDeleted = true
+        await this.deleteEnvironmentResources(row)
         this.$message.success('删除成功');
-        this.getData(1, true);
-        this.checkLanguage(row.group)
-      })
+      } catch (error) {
+        const message = error?.response?.data?.error || error?.message || '删除失败'
+        this.$message.error(environmentDeleted ? '环境记录已删除，但' + message : message)
+      } finally {
+        if (environmentDeleted) {
+          this.getData(1, true);
+          this.checkLanguage(row.group)
+        }
+      }
     },
     config(row) {
       const formatIMageName = row.imageName.replace(/\//g, 'W7IMAGENAMESLASH')
