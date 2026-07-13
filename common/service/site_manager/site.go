@@ -3,8 +3,10 @@ package site_manager
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/w7panel/w7panel-sitemanager/common/accessor"
@@ -29,6 +31,60 @@ type SiteManagerService struct {
 }
 
 const TokenHeader = "X-Site-Manager-Token"
+
+// LoginFromW7Panel exchanges a W7Panel access token for a site-manager session token.
+func (s SiteManagerService) LoginFromW7Panel(accessToken string) (string, error) {
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken == "" {
+		return "", errors.New("access token is required")
+	}
+
+	payload, err := json.Marshal(map[string]string{"access_token": accessToken})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/oidc/w7panel/login", bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	if resp.StatusCode != http.StatusOK {
+		var apiError ApiError
+		if err := json.Unmarshal(respBody, &apiError); err != nil {
+			return "", err
+		}
+		if apiError.ErrorMsg == "" {
+			apiError.ErrorMsg = string(respBody)
+			apiError.Code = resp.StatusCode
+		}
+		return "", apiError
+	}
+
+	loginResp := struct {
+		Token string `json:"token"`
+	}{}
+	successResp := SuccessResp{Data: &loginResp}
+	if err := json.Unmarshal(respBody, &successResp); err != nil {
+		return "", err
+	}
+	loginResp.Token = strings.TrimSpace(loginResp.Token)
+	if loginResp.Token == "" {
+		return "", errors.New("site manager login returned an empty token")
+	}
+	return loginResp.Token, nil
+}
 
 func (s SiteManagerService) newJSONRequest(path string, payload []byte) (*http.Request, error) {
 	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+path, bytes.NewReader(payload))

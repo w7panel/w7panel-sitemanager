@@ -49,7 +49,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
 	cmd.Flags().StringVar(&argsValue.NginxVhostTemplate, "nginx-vhost-template", "", "nginx vhost template")
 	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
-	cmd.Flags().StringVar(&argsValue.Token, "token", "", "X-Site-Manager-Token used to call site manager APIs")
+	cmd.Flags().StringVar(&argsValue.Token, "token", "", "W7Panel access token used to log in to site manager")
 }
 
 func (c SiteCreate) GetDescription() string {
@@ -57,9 +57,12 @@ func (c SiteCreate) GetDescription() string {
 }
 
 func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
-	slog.Info("create_site", "args", argsValue)
+	slog.Info("create_site", "app_name", argsValue.AppName, "domain", argsValue.Domain)
 
-	siteManagerService := getSiteManagerService()
+	siteManagerService, err := getSiteManagerService()
+	if err != nil {
+		panic(err)
+	}
 	if argsValue.K8sEnvAppName == "" {
 		panic("k8s-env-app-name is required")
 	}
@@ -122,7 +125,7 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	slog.Info("站点安装成功", "params", argsValue)
+	slog.Info("站点安装成功", "app_name", argsValue.AppName, "domain", argsValue.Domain)
 }
 
 func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, siteInfo *site_manager.SiteInfoResp) (int, bool, error) {
@@ -148,11 +151,16 @@ func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, si
 	return environment.Id, true, nil
 }
 
-func getSiteManagerService() site_manager.SiteManagerService {
-	return site_manager.SiteManagerService{
+func getSiteManagerService() (site_manager.SiteManagerService, error) {
+	service := site_manager.SiteManagerService{
 		BaseUrl: "http://w7-sitemanager-site-manager.default.svc.cluster.local:8000",
-		Token:   argsValue.Token,
 	}
+	token, err := service.LoginFromW7Panel(argsValue.Token)
+	if err != nil {
+		return site_manager.SiteManagerService{}, err
+	}
+	service.Token = token
+	return service, nil
 }
 
 func isSameSiteEnvironment(environment site_manager.SiteEnvironmentResp) bool {
