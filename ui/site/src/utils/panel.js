@@ -11,7 +11,6 @@ const newApiSuffix = '/panel-api/v1'
 
 myAxios.interceptors.request.use((config) => {
     config.headers = config.headers || {}
-    config.headers['X-W7Panel-Token'] = getPanelToken()
     config.headers.Authorization = `Bearer ${getPanelToken()}`
     if (config.url.includes('/apps/v1') || config.url.includes('/apis/w7panel.w7.com') || config.url.includes('/api/v1') || config.url.includes('/apis/batch/v1') || config.url.includes('/apis/networking.k8s.io')) {
         config.url = '/k8s-proxy' + config.url
