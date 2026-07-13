@@ -24,6 +24,7 @@ type appCommandArgs struct {
 	K8sEnvAppName       string
 	NginxVhostTemplate  string
 	EnableSsl           bool
+	Token               string
 }
 
 var argsValue appCommandArgs
@@ -48,6 +49,7 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
 	cmd.Flags().StringVar(&argsValue.NginxVhostTemplate, "nginx-vhost-template", "", "nginx vhost template")
 	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
+	cmd.Flags().StringVar(&argsValue.Token, "token", "", "X-Site-Manager-Token used to call site manager APIs")
 }
 
 func (c SiteCreate) GetDescription() string {
@@ -149,6 +151,7 @@ func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, si
 func getSiteManagerService() site_manager.SiteManagerService {
 	return site_manager.SiteManagerService{
 		BaseUrl: "http://w7-sitemanager-site-manager.default.svc.cluster.local:8000",
+		Token:   argsValue.Token,
 	}
 }
 

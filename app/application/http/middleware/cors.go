@@ -20,6 +20,7 @@ func (self Cors) Process(ctx *gin.Context) {
 	ctx.Header("Access-Control-Allow-Credentials", "false")
 	if ctx.Request.Method == "OPTIONS" {
 		ctx.AbortWithStatus(http.StatusNoContent)
+		return
 	}
 	ctx.Next()
 }
@@ -45,6 +46,7 @@ func (self Cors) getAllowHeader() string {
 		"uid",
 		"uuid",
 		"X-W7Panel-Token",
+		"X-Site-Manager-Token",
 	}
 	return strings.Join(allowHeader, ",")
 }

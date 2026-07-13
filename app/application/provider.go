@@ -55,22 +55,25 @@ func (p Provider) RegisterHttpRoutes(server *httpServer.Server) {
 		})
 
 		root := engine.Group("/api", middleware.Cors{}.Process)
+		root.Match([]string{"POST", "OPTIONS"}, "/oidc/w7panel/login", controller.OIDC{}.LoginFromW7Panel)
 
-		root.Any("/k8s/proxy/*path", middleware.Cors{}.Process, middleware.Auth{}.Process, controller.K8s{}.Proxy)
+		api := root.Group("/", middleware.Auth{}.Process)
 
-		root.Match([]string{"POST", "OPTIONS"}, "/site/list", middleware.Auth{}.Process, controller.Site{}.List)
-		root.Match([]string{"POST", "OPTIONS"}, "/site/create", middleware.Auth{}.Process, controller.Site{}.Create)
-		root.Match([]string{"POST", "OPTIONS"}, "/site/update", middleware.Auth{}.Process, controller.Site{}.Update)
-		root.Match([]string{"POST", "OPTIONS"}, "/site/delete", middleware.Auth{}.Process, controller.Site{}.Delete)
-		root.Match([]string{"POST", "OPTIONS"}, "/site/info", middleware.Auth{}.Process, controller.Site{}.Info)
+		api.Any("/k8s/proxy/*path", controller.K8s{}.Proxy)
 
-		root.Match([]string{"POST", "OPTIONS"}, "/site-nginx/set-proxy-conf", middleware.Auth{}.Process, controller.SiteSetting{}.SetNginxVhostConf)
-		root.Match([]string{"POST", "OPTIONS"}, "/site-nginx/get-proxy-conf", middleware.Auth{}.Process, controller.SiteSetting{}.GetNginxVhostConf)
+		api.POST("/site/list", controller.Site{}.List)
+		api.POST("/site/create", controller.Site{}.Create)
+		api.POST("/site/update", controller.Site{}.Update)
+		api.POST("/site/delete", controller.Site{}.Delete)
+		api.POST("/site/info", controller.Site{}.Info)
 
-		root.Match([]string{"POST", "OPTIONS"}, "/environment/create", middleware.Auth{}.Process, controller.SiteEnvironment{}.Create)
-		root.Match([]string{"POST", "OPTIONS"}, "/environment/update", middleware.Auth{}.Process, controller.SiteEnvironment{}.Update)
-		root.Match([]string{"POST", "OPTIONS"}, "/environment/list", middleware.Auth{}.Process, controller.SiteEnvironment{}.List)
-		root.Match([]string{"POST", "OPTIONS"}, "/environment/delete", middleware.Auth{}.Process, controller.SiteEnvironment{}.Delete)
-		root.Match([]string{"GET", "OPTIONS"}, "/environment/support-list", middleware.Auth{}.Process, controller.SiteEnvironment{}.GetSupportEnvironmentList)
+		api.POST("/site-nginx/set-proxy-conf", controller.SiteSetting{}.SetNginxVhostConf)
+		api.POST("/site-nginx/get-proxy-conf", controller.SiteSetting{}.GetNginxVhostConf)
+
+		api.POST("/environment/create", controller.SiteEnvironment{}.Create)
+		api.POST("/environment/update", controller.SiteEnvironment{}.Update)
+		api.POST("/environment/list", controller.SiteEnvironment{}.List)
+		api.POST("/environment/delete", controller.SiteEnvironment{}.Delete)
+		api.GET("/environment/support-list", controller.SiteEnvironment{}.GetSupportEnvironmentList)
 	})
 }

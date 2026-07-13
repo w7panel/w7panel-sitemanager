@@ -41,8 +41,20 @@ database:
     db_name: ${MYSQL_DATABASE-w7_site_manager}
     charset: utf8mb4
     prefix: ims_
+cookie:
+  name: ${SESSION_COOKIE_NAME-SITE_MANAGER_SESSION_ID}
+  path: /
+  domain: ${SESSION_COOKIE_DOMAIN-}
+  http_only: true
+  secure: ${SESSION_COOKIE_SECURE-true}
+  expires: ${SESSION_COOKIE_MAX_AGE_SECONDS-86400}
+  same_site: none
+session:
+  name: ${SESSION_COOKIE_NAME-SITE_MANAGER_SESSION_ID}
 setting:
-  oauth_token: ${OAUTH_TOKEN-rogtdpxguk}
+  secret: ${COMMON_SECRET-rogtdpxguk}
+  oidc:
+    base_url: ${SYSTEM_OIDC_BASE_URL-http://w7panel-offline-agent.default.svc.cluster.local}
   nginx:
     vhost_dir: ${NGINX_VHOST_DIR-/usr/local/etc/nginx/sites-enabled}
     web_root_dir: ${NGINX_WEB_DIR-/tmp/www}

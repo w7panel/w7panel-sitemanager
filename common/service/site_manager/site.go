@@ -25,6 +25,19 @@ func (ve ApiError) Error() string {
 
 type SiteManagerService struct {
 	BaseUrl string
+	Token   string
+}
+
+const TokenHeader = "X-Site-Manager-Token"
+
+func (s SiteManagerService) newJSONRequest(path string, payload []byte) (*http.Request, error) {
+	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+path, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(TokenHeader, s.Token)
+	return req, nil
 }
 
 type CreateEnvironmentReq struct {
@@ -101,11 +114,10 @@ func (s SiteManagerService) CreateEnvironment(createReq CreateEnvironmentReq) (*
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/environment/create", bytes.NewReader(payload))
+	req, err := s.newJSONRequest("/api/environment/create", payload)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -154,11 +166,10 @@ func (s SiteManagerService) CreateSite(createReq CreateSiteReq) error {
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/create", bytes.NewReader(payload))
+	req, err := s.newJSONRequest("/api/site/create", payload)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -198,11 +209,10 @@ func (s SiteManagerService) UpdateSite(updateReq UpdateSiteReq) error {
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/update", bytes.NewReader(payload))
+	req, err := s.newJSONRequest("/api/site/update", payload)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -242,11 +252,10 @@ func (s SiteManagerService) InfoSite(infoReq SiteInfoReq) (*SiteInfoResp, error)
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/info", bytes.NewReader(payload))
+	req, err := s.newJSONRequest("/api/site/info", payload)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -295,11 +304,10 @@ func (s SiteManagerService) UpdateSiteCode(updateReq UpdateSiteCodeReq) error {
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/site/update-code", bytes.NewReader(payload))
+	req, err := s.newJSONRequest("/api/site/update-code", payload)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -339,11 +347,10 @@ func (s SiteManagerService) DeleteEnvironment(id int) error {
 		Timeout: 30 * time.Second,
 	}
 
-	req, err := http.NewRequest(http.MethodPost, s.BaseUrl+"/api/environment/delete", bytes.NewReader(payload))
+	req, err := s.newJSONRequest("/api/environment/delete", payload)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err

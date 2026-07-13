@@ -13,6 +13,7 @@ import (
 	"github.com/we7coreteam/w7-rangine-go/v2/src/core/helper"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/http"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/http/middleware"
+	"github.com/we7coreteam/w7-rangine-go/v2/src/http/session"
 )
 
 //go:embed config.yaml
@@ -37,6 +38,7 @@ func main() {
 
 	httpServer := new(http.Provider).Register(newApp.GetConfig(), newApp.GetConsole(), newApp.GetServerManager()).Export()
 	httpServer.Use(middleware.GetPanicHandlerMiddleware())
+	httpServer.Use(middleware.GetSessionMiddleware(newApp.GetConfig(), session.GetGormStore, []byte(newApp.GetConfig().GetString("setting.secret"))))
 	new(app2.Provider).Register(httpServer, newApp.GetConsole())
 	new(webhook.Provider).Register(httpServer, newApp.GetConfig())
 

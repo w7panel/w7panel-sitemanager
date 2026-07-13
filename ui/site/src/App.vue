@@ -1,23 +1,38 @@
 <template>
     <el-config-provider :locale="locale" style="min-height:100%;">
-        <router-view></router-view>
+        <router-view v-if="authReady"></router-view>
     </el-config-provider>
 </template>
 
 <script>
 import locale from 'element-plus/es/locale/lang/zh-cn'
+import myAxios from './utils'
+import { getWujieAccessToken, setSiteManagerToken } from './utils/auth-token'
 
 export default {
     data() {
         return {
-            locale
+            locale,
+            authReady: false
         }
     },
-    created(){
+    async created(){
       window.$wujie?.bus.$on("routeChange",  (path) => {
         this.$router.push(path)
       });
-	}
+      await this.loginWithWujieAccessToken()
+      this.authReady = true
+	},
+    methods: {
+        async loginWithWujieAccessToken() {
+            const accessToken = getWujieAccessToken()
+            if (!accessToken) {
+                return
+            }
+            const response = await myAxios.post('/api/oidc/w7panel/login', { access_token: accessToken })
+            setSiteManagerToken(response.data?.data?.token)
+        }
+    }
 }
 </script>
 

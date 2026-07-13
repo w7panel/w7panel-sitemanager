@@ -1,5 +1,6 @@
 import axios from "axios";
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { getPanelToken, getSiteManagerToken, setSiteManagerToken, SITE_MANAGER_TOKEN_HEADER } from './auth-token';
 
 const myAxios = axios.create({
     baseURL: window?.$wujie?.props?.url,
@@ -7,22 +8,22 @@ const myAxios = axios.create({
 });
 
 myAxios.interceptors.request.use(config => {
-    config.headers.Authorization = 'bearer ' + (window.$wujie?.props?.OAUTH_TOKEN ?? 'rogtdpxguk')
-    config.headers.AuthorizationX = `Bearer ${window.$wujie?.props?.paneltoken}`
+    config.headers[SITE_MANAGER_TOKEN_HEADER] = getSiteManagerToken()
+    config.headers['AuthorizationX'] = getPanelToken()
     return config
 }, err => {
     Promise.reject(err)
 })
 
 myAxios.interceptors.response.use(res => {
+    setSiteManagerToken(res.headers?.[SITE_MANAGER_TOKEN_HEADER.toLowerCase()])
     if (res.status >= 200 && res.status < 300 && res) {
         return Promise.resolve(res)
     }
 }, error => {
     if (error?.response?.status == 401) {
-        if (window.formrelogining) { return }
         window.formrelogining = true;
-        return;
+        return Promise.reject(error);
     }
 
     if (error?.response?.status == 422) {

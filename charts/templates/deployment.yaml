@@ -52,6 +52,10 @@ spec:
               value: {{.Values.global.NGINX_WEB_DIR}}
             - name: ENVIRONMENT_SERVER_ROOT
               value: {{.Values.global.SERVER_DIR}}
+            {{- if .Values.global.oidc.enabled }}
+            - name: SYSTEM_OIDC_BASE_URL
+              value: {{ .Values.global.oidc.baseURL | quote }}
+            {{- end }}
             {{- if .Values.webhook.enabled }}
             - name: W7_SITE_MANAGER_SERVER_TLS_ENABLE
               value: "true"

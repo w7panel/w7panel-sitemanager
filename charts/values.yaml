@@ -95,6 +95,9 @@ cluster:
   storageRWMode: "ReadWriteOnce"
 
 global:
+  oidc:
+    enabled: true
+    baseURL: "http://w7panel-offline-agent.default.svc.cluster.local"
   NGINX_WEB_DIR: /www/wwwroot
   SERVER_DIR: /www/server
   NGINX_DIR: /www/server/nginx

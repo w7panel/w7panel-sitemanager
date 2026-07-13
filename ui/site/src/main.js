@@ -49,6 +49,13 @@ if (window.__POWERED_BY_WUJIE__) {
 	window.__webpack_public_path__ = window.__WUJIE_PUBLIC_PATH__;
 }
 
+if (process.env.NODE_ENV === 'development') {
+	const token = process.env.VUE_APP_SITE_MANAGER_TOKEN || process.env.VUE_APP_TOKEN
+	if (token) {
+		localStorage.setItem('X-Site-Manager-Token', token)
+	}
+}
+
 const app = createApp(App);
 const elementComponents = [
 	ElAlert,
