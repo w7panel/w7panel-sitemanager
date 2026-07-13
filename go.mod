@@ -21,6 +21,7 @@ require github.com/spf13/cobra v1.7.0
 require (
 	github.com/otiai10/copy v1.14.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
+	golang.org/x/sync v0.16.0
 	gorm.io/gen v0.3.23
 	gorm.io/plugin/dbresolver v1.3.0
 	k8s.io/api v0.34.1
@@ -111,7 +112,6 @@ require (
 	golang.org/x/mod v0.25.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/term v0.33.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
