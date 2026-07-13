@@ -54,7 +54,7 @@ session:
 setting:
   secret: ${COMMON_SECRET-rogtdpxguk}
   oidc:
-    base_url: ${SYSTEM_OIDC_BASE_URL-http://w7panel-offline-agent.default.svc.cluster.local}
+    base_url: ${SYSTEM_OIDC_BASE_URL-http://w7panel-offline-agent.default.svc.cluster.local:8000}
   nginx:
     vhost_dir: ${NGINX_VHOST_DIR-/usr/local/etc/nginx/sites-enabled}
     web_root_dir: ${NGINX_WEB_DIR-/tmp/www}
