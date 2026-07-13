@@ -9,7 +9,7 @@ const myAxios = axios.create({
 
 myAxios.interceptors.request.use(config => {
     config.headers[SITE_MANAGER_TOKEN_HEADER] = getSiteManagerToken()
-    config.headers['AuthorizationX'] = getPanelToken()
+    config.headers['Authorization'] = getPanelToken()
     return config
 }, err => {
     Promise.reject(err)
