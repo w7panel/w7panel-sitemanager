@@ -97,7 +97,7 @@ cluster:
 global:
   oidc:
     enabled: true
-    baseURL: "http://w7panel-offline-agent.default.svc.cluster.local:8000"
+    baseURL: "http://w7panel-offline.default.svc.cluster.local:8000"
   NGINX_WEB_DIR: /www/wwwroot
   SERVER_DIR: /www/server
   NGINX_DIR: /www/server/nginx
