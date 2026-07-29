@@ -59,7 +59,7 @@ func (c SiteCreate) GetDescription() string {
 func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 	slog.Info("create_site", "app_name", argsValue.AppName, "domain", argsValue.Domain)
 
-	siteManagerService, err := getSiteManagerService()
+	siteManagerService, err := getSiteManagerService(argsValue.Token)
 	if err != nil {
 		panic(err)
 	}
@@ -151,11 +151,11 @@ func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, si
 	return environment.Id, true, nil
 }
 
-func getSiteManagerService() (site_manager.SiteManagerService, error) {
+func getSiteManagerService(accessToken string) (site_manager.SiteManagerService, error) {
 	service := site_manager.SiteManagerService{
 		BaseUrl: "http://w7-sitemanager-site-manager.default.svc.cluster.local:8000",
 	}
-	token, err := service.LoginFromW7Panel(argsValue.Token)
+	token, err := service.LoginFromW7Panel(accessToken)
 	if err != nil {
 		return site_manager.SiteManagerService{}, err
 	}
