@@ -11,8 +11,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -303,20 +301,12 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	template := objectMap(objectMap(result, "spec"), "template")
 	templateMetadata := objectMap(template, "metadata")
 	templateAnnotations := objectMap(templateMetadata, "annotations")
-	copyRules, _ := templateAnnotations["w7.cc/yaml_copy"].(string)
-	if strings.TrimSpace(copyRules) != "" && copyRules != "null" {
-		var copySource map[string]any
-		if err := p.panel.Get(ctx, p.deploymentPath("w7-sitemanager-site-manager"), &copySource); err != nil {
-			return nil, fmt.Errorf("query yaml_copy source deployment: %w", err)
-		}
-		var err error
-		result, err = applyYAMLCopy(result, copySource, copyRules)
-		if err != nil {
-			return nil, fmt.Errorf("apply yaml_copy: %w", err)
-		}
-		template = objectMap(objectMap(result, "spec"), "template")
-		templateMetadata = objectMap(template, "metadata")
-		templateAnnotations = objectMap(templateMetadata, "annotations")
+	var siteManager map[string]any
+	if err := p.panel.Get(ctx, p.deploymentPath("w7-sitemanager-site-manager"), &siteManager); err != nil {
+		return nil, fmt.Errorf("query site-manager deployment for shared storage: %w", err)
+	}
+	if err := mergeSiteManagerStorage(result, siteManager); err != nil {
+		return nil, fmt.Errorf("merge site-manager shared storage: %w", err)
 	}
 
 	metadata := objectMap(result, "metadata")
@@ -446,120 +436,108 @@ func isPanelNotFound(err error) bool {
 	return errors.As(err, &apiError) && apiError.StatusCode == http.StatusNotFound
 }
 
-type yamlCopyRule struct {
-	Source string `json:"source"`
-	Target string `json:"target"`
-}
-
-var yamlPathPartRegexp = regexp.MustCompile(`^([^\[]+)(?:\[([0-9]+)\])?$`)
-
-func applyYAMLCopy(target, source map[string]any, rulesJSON string) (map[string]any, error) {
-	var rules []yamlCopyRule
-	if err := json.Unmarshal([]byte(rulesJSON), &rules); err != nil {
-		return nil, err
+func mergeSiteManagerStorage(target, siteManager map[string]any) error {
+	sourcePodSpec, err := deploymentPodSpec(siteManager, "site-manager")
+	if err != nil {
+		return err
 	}
-	for _, rule := range rules {
-		sourcePath, err := parseYAMLPath(rule.Source)
-		if err != nil {
-			return nil, err
-		}
-		targetPath, err := parseYAMLPath(rule.Target)
-		if err != nil {
-			return nil, err
-		}
-		value, err := getYAMLPath(source, sourcePath)
-		if err != nil {
-			return nil, fmt.Errorf("read source path %s: %w", rule.Source, err)
-		}
-		updated, err := setYAMLPath(target, targetPath, deepCopyJSONValue(value))
-		if err != nil {
-			return nil, fmt.Errorf("write target path %s: %w", rule.Target, err)
-		}
-		var ok bool
-		target, ok = updated.(map[string]any)
+	sourceContainers, ok := sourcePodSpec["containers"].([]any)
+	if !ok || len(sourceContainers) == 0 {
+		return errors.New("site-manager deployment has no containers")
+	}
+	sourceContainer, ok := sourceContainers[0].(map[string]any)
+	if !ok {
+		return errors.New("site-manager deployment has an invalid first container")
+	}
+	sourceMounts, ok := sourceContainer["volumeMounts"].([]any)
+	if !ok || len(sourceMounts) <= 3 {
+		return errors.New("site-manager deployment requires volumeMounts[2] and volumeMounts[3]")
+	}
+	sourceVolumes, ok := sourcePodSpec["volumes"].([]any)
+	if !ok || len(sourceVolumes) == 0 {
+		return errors.New("site-manager deployment requires volumes[0]")
+	}
+
+	targetPodSpec, err := deploymentPodSpec(target, "target environment")
+	if err != nil {
+		return err
+	}
+	targetContainers, ok := targetPodSpec["containers"].([]any)
+	if !ok || len(targetContainers) == 0 {
+		return errors.New("target environment deployment has no containers")
+	}
+	targetContainer, ok := targetContainers[0].(map[string]any)
+	if !ok {
+		return errors.New("target environment deployment has an invalid first container")
+	}
+	targetMounts, err := optionalObjectList(targetContainer, "volumeMounts", "target environment volumeMounts")
+	if err != nil {
+		return err
+	}
+	for _, index := range []int{2, 3} {
+		mount, ok := sourceMounts[index].(map[string]any)
 		if !ok {
-			return nil, fmt.Errorf("yaml_copy target path %s replaced the deployment root", rule.Target)
+			return fmt.Errorf("site-manager deployment volumeMounts[%d] is invalid", index)
 		}
+		targetMounts = append(targetMounts, deepCopyJSONValue(mount))
 	}
-	return target, nil
+	targetContainer["volumeMounts"] = targetMounts
+
+	targetVolumes, err := optionalObjectList(targetPodSpec, "volumes", "target environment volumes")
+	if err != nil {
+		return err
+	}
+	sourceVolume, ok := sourceVolumes[0].(map[string]any)
+	if !ok {
+		return errors.New("site-manager deployment volumes[0] is invalid")
+	}
+	if !containsNamedObject(targetVolumes, sourceVolume) {
+		targetVolumes = append(targetVolumes, deepCopyJSONValue(sourceVolume))
+	}
+	targetPodSpec["volumes"] = targetVolumes
+	return nil
 }
 
-func parseYAMLPath(value string) ([]any, error) {
-	parts := strings.Split(value, ".")
-	path := make([]any, 0, len(parts)*2)
-	for _, part := range parts {
-		match := yamlPathPartRegexp.FindStringSubmatch(part)
-		if len(match) == 0 {
-			return nil, fmt.Errorf("invalid yaml_copy path %q", value)
-		}
-		path = append(path, match[1])
-		if match[2] != "" {
-			index, err := strconv.Atoi(match[2])
-			if err != nil {
-				return nil, err
-			}
-			path = append(path, index)
-		}
+func deploymentPodSpec(deployment map[string]any, description string) (map[string]any, error) {
+	spec, ok := deployment["spec"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s deployment has no spec", description)
 	}
-	return path, nil
+	template, ok := spec["template"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s deployment has no pod template", description)
+	}
+	podSpec, ok := template["spec"].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%s deployment has no pod spec", description)
+	}
+	return podSpec, nil
 }
 
-func getYAMLPath(value any, path []any) (any, error) {
-	current := value
-	for _, part := range path {
-		if current == nil {
-			return nil, nil
-		}
-		switch key := part.(type) {
-		case string:
-			object, ok := current.(map[string]any)
-			if !ok {
-				return nil, nil
-			}
-			current = object[key]
-		case int:
-			list, ok := current.([]any)
-			if !ok || key < 0 || key >= len(list) {
-				return nil, nil
-			}
-			current = list[key]
-		}
+func optionalObjectList(parent map[string]any, key, description string) ([]any, error) {
+	value, exists := parent[key]
+	if !exists || value == nil {
+		return []any{}, nil
 	}
-	return current, nil
+	items, ok := value.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s is invalid", description)
+	}
+	return items, nil
 }
 
-func setYAMLPath(value any, path []any, replacement any) (any, error) {
-	if len(path) == 0 {
-		return replacement, nil
+func containsNamedObject(existing []any, candidate map[string]any) bool {
+	candidateName, _ := candidate["name"].(string)
+	for _, item := range existing {
+		object, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if name, _ := object["name"].(string); candidateName != "" && name == candidateName {
+			return true
+		}
 	}
-	switch key := path[0].(type) {
-	case string:
-		object, ok := value.(map[string]any)
-		if !ok || object == nil {
-			object = map[string]any{}
-		}
-		child, err := setYAMLPath(object[key], path[1:], replacement)
-		if err != nil {
-			return nil, err
-		}
-		object[key] = child
-		return object, nil
-	case int:
-		if key < 0 {
-			return nil, fmt.Errorf("index %d is out of range", key)
-		}
-		list, _ := value.([]any)
-		for len(list) <= key {
-			list = append(list, nil)
-		}
-		child, err := setYAMLPath(list[key], path[1:], replacement)
-		if err != nil {
-			return nil, err
-		}
-		list[key] = child
-		return list, nil
-	}
-	return nil, errors.New("unsupported yaml_copy path component")
+	return false
 }
 
 func deepCopyJSONValue(value any) any {
