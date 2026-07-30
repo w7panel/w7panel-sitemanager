@@ -1,6 +1,7 @@
 package command
 
 import (
+	"errors"
 	"log/slog"
 	"net/url"
 	"strings"
@@ -57,27 +58,33 @@ func (c SiteCreate) GetDescription() string {
 }
 
 func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
+	if err := createSite(argsValue); err != nil {
+		panic(err)
+	}
+}
+
+func createSite(argsValue appCommandArgs) error {
 	slog.Info("create_site", "app_name", argsValue.AppName, "domain", argsValue.Domain)
 
 	siteManagerService, err := getSiteManagerService(argsValue.Token)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	if argsValue.K8sEnvAppName == "" {
-		panic("k8s-env-app-name is required")
+		return errors.New("k8s-env-app-name is required")
 	}
 
 	siteInfo, _ := siteManagerService.InfoSite(site_manager.SiteInfoReq{
 		Domain: argsValue.Domain,
 	})
-	environmentId, createdEnvironment, err := resolveEnvironmentId(siteManagerService, siteInfo)
+	environmentId, createdEnvironment, err := resolveEnvironmentId(siteManagerService, siteInfo, argsValue)
 	if err != nil {
-		panic(err)
+		return err
 	}
 
 	urlInfo, err := url.Parse(argsValue.CodeDownloadUrl)
 	if err != nil {
-		panic(err)
+		return err
 	}
 	//触发 info 接口， 才能从 downloadurl 下载文件
 	zpkService := zpk.ZpkService{
@@ -101,7 +108,7 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 					slog.Error(cleanupErr.Error())
 				}
 			}
-			panic(err)
+			return err
 		}
 		slog.Info("站点已存在，更新站点环境成功", "domain", argsValue.Domain, "environment_id", environmentId)
 	} else {
@@ -121,15 +128,16 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 					slog.Error(cleanupErr.Error())
 				}
 			}
-			panic(err)
+			return err
 		}
 	}
 
 	slog.Info("站点安装成功", "app_name", argsValue.AppName, "domain", argsValue.Domain)
+	return nil
 }
 
-func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, siteInfo *site_manager.SiteInfoResp) (int, bool, error) {
-	if siteInfo != nil && isSameSiteEnvironment(siteInfo.SiteEnvironment) && siteInfo.SiteEnvironment.Id > 0 {
+func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, siteInfo *site_manager.SiteInfoResp, argsValue appCommandArgs) (int, bool, error) {
+	if siteInfo != nil && isSameSiteEnvironment(siteInfo.SiteEnvironment, argsValue) && siteInfo.SiteEnvironment.Id > 0 {
 		return siteInfo.SiteEnvironment.Id, false, nil
 	}
 
@@ -139,7 +147,7 @@ func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, si
 	}
 	environment, err := siteManagerService.CreateEnvironment(site_manager.CreateEnvironmentReq{
 		Title:              title,
-		Group:              getDesiredEnvironmentGroup(),
+		Group:              getDesiredEnvironmentGroup(argsValue),
 		Language:           argsValue.EnvironmentLanguage,
 		Version:            argsValue.EnvironmentVersion,
 		AppName:            argsValue.K8sEnvAppName,
@@ -163,14 +171,14 @@ func getSiteManagerService(accessToken string) (site_manager.SiteManagerService,
 	return service, nil
 }
 
-func isSameSiteEnvironment(environment site_manager.SiteEnvironmentResp) bool {
+func isSameSiteEnvironment(environment site_manager.SiteEnvironmentResp, argsValue appCommandArgs) bool {
 	if environment.Language != argsValue.EnvironmentLanguage || environment.Version != argsValue.EnvironmentVersion {
 		return false
 	}
 
-	return environment.Group == getDesiredEnvironmentGroup()
+	return environment.Group == getDesiredEnvironmentGroup(argsValue)
 }
 
-func getDesiredEnvironmentGroup() string {
+func getDesiredEnvironmentGroup(argsValue appCommandArgs) string {
 	return strings.ReplaceAll(argsValue.EnvironmentName, "_", "-")
 }

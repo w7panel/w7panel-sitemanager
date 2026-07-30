@@ -22,6 +22,7 @@ func (p Provider) Register(httpServer *httpServer.Server, consoleManager console
 
 	consoleManager.RegisterCommand(new(command.SiteCreate))
 	consoleManager.RegisterCommand(new(command.SiteInfo))
+	consoleManager.RegisterCommand(new(command.SiteProvision))
 }
 
 func (p Provider) initDb() {
