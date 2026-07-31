@@ -429,13 +429,34 @@ export default {
       }
       return p;
     },
+    getAutoFillRules(data) {
+      const volumeMounts = data?.spec?.template?.spec?.containers?.[0]?.volumeMounts
+      const volumes = data?.spec?.template?.spec?.volumes
+      const volumeMountIndex = Array.isArray(volumeMounts) ? volumeMounts.length : 0
+      const volumeIndex = Array.isArray(volumes) ? volumes.length : 0
+
+      return [
+        {
+          source: 'spec.template.spec.containers[0].volumeMounts[2]',
+          target: `spec.template.spec.containers[0].volumeMounts[${volumeMountIndex}]`
+        },
+        {
+          source: 'spec.template.spec.containers[0].volumeMounts[3]',
+          target: `spec.template.spec.containers[0].volumeMounts[${volumeMountIndex + 1}]`
+        },
+        {
+          source: 'spec.template.spec.volumes[0]',
+          target: `spec.template.spec.volumes[${volumeIndex}]`
+        }
+      ]
+    },
     copy(app_name, version) {
       let name
       return new Promise((resolve) => {
         panelAxios.get("/apis/apps/v1/namespaces/default/deployments/" + app_name.replace(/_/g, '-')).then(async res => {
           if (!res?.data) { return }
           let data = res?.data;
-          const autoFillRules = data.spec.template.metadata.annotations['w7.cc/yaml_copy']
+          const autoFillRules = this.getAutoFillRules(data)
           if (autoFillRules) {
             const siteManagerData = await this.getAppConfig((window.$wujie?.props?.group || window.$wujie?.props?.releaseName) + '-site-manager')
             data = fillData(data, autoFillRules, siteManagerData.data)
