@@ -308,6 +308,7 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	if err := mergeSiteManagerStorage(result, siteManager); err != nil {
 		return nil, fmt.Errorf("merge site-manager shared storage: %w", err)
 	}
+	delete(templateAnnotations, "w7.cc/yaml_copy")
 
 	metadata := objectMap(result, "metadata")
 	for _, key := range []string{"resourceVersion", "uid", "creationTimestamp", "managedFields", "ownerReferences"} {
