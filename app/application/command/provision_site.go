@@ -322,8 +322,8 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	labels := objectMap(metadata, "labels")
 	annotations["w7.cc/create-svc"] = "true"
 	annotations["title"] = p.args.TargetEnvAppName
-	annotations["w7.cc/parent-group-name"] = p.args.Release
-	labels["w7.cc/parent-group-name"] = p.args.Release
+	annotations["w7.cc/owner-group-name"] = p.args.Release
+	labels["w7.cc/owner-group-name"] = p.args.Release
 	labels["app"] = p.args.TargetEnvAppName
 
 	spec := objectMap(result, "spec")
