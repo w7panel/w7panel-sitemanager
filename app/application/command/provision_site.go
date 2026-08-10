@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -19,22 +20,26 @@ import (
 )
 
 type siteProvisionCommandArgs struct {
-	PanelURL            string
-	PanelToken          string
-	PanelAccessToken    string
-	Namespace           string
-	Operation           string
-	Release             string
-	EnvironmentTitle    string
-	EnvironmentName     string
-	EnvironmentVersion  string
-	EnvironmentLanguage string
-	Domain              string
-	EnableSSL           bool
-	AppName             string
-	SiteK8sAppName      string
-	TargetEnvAppName    string
-	CodeDownloadURL     string
+	PanelURL              string
+	PanelToken            string
+	PanelAccessToken      string
+	Namespace             string
+	Operation             string
+	Release               string
+	EnvironmentTitle      string
+	EnvironmentName       string
+	EnvironmentVersion    string
+	EnvironmentLanguage   string
+	Domain                string
+	EnableSSL             bool
+	AppName               string
+	SiteK8sAppName        string
+	TargetEnvAppName      string
+	CodeDownloadURL       string
+	SidecarContainers     string
+	SidecarInitContainers string
+	SidecarVolumes        string
+	PodAnnotations        string
 }
 
 var siteProvisionArgsValue siteProvisionCommandArgs
@@ -64,6 +69,10 @@ func (SiteProvision) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&siteProvisionArgsValue.SiteK8sAppName, "site-k8s-app-name", "", "site Kubernetes application name")
 	cmd.Flags().StringVar(&siteProvisionArgsValue.TargetEnvAppName, "target-env-app-name", "", "target environment deployment name")
 	cmd.Flags().StringVar(&siteProvisionArgsValue.CodeDownloadURL, "code-download-url", "", "code download URL")
+	cmd.Flags().StringVar(&siteProvisionArgsValue.SidecarContainers, "sidecar-containers", "", "base64 encoded sidecar containers JSON")
+	cmd.Flags().StringVar(&siteProvisionArgsValue.SidecarInitContainers, "sidecar-init-containers", "", "base64 encoded sidecar init containers JSON")
+	cmd.Flags().StringVar(&siteProvisionArgsValue.SidecarVolumes, "sidecar-volumes", "", "base64 encoded sidecar volumes JSON")
+	cmd.Flags().StringVar(&siteProvisionArgsValue.PodAnnotations, "pod-annotations", "", "base64 encoded pod annotations JSON")
 }
 
 func (SiteProvision) GetDescription() string {
@@ -79,6 +88,7 @@ func (SiteProvision) Handle(cmd *cobra.Command, _ []string) {
 type panelKubernetesClient interface {
 	Get(context.Context, string, any) error
 	Post(context.Context, string, any, any) error
+	Patch(context.Context, string, any, any) error
 	Delete(context.Context, string) error
 }
 
@@ -117,11 +127,19 @@ func (p *panelKubernetesAPI) Post(ctx context.Context, path string, body, respon
 	return p.do(ctx, http.MethodPost, path, body, response)
 }
 
+func (p *panelKubernetesAPI) Patch(ctx context.Context, path string, body, response any) error {
+	return p.doWithContentType(ctx, http.MethodPatch, path, body, response, "application/strategic-merge-patch+json")
+}
+
 func (p *panelKubernetesAPI) Delete(ctx context.Context, path string) error {
 	return p.do(ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (p *panelKubernetesAPI) do(ctx context.Context, method, path string, body, response any) error {
+	return p.doWithContentType(ctx, method, path, body, response, "application/json")
+}
+
+func (p *panelKubernetesAPI) doWithContentType(ctx context.Context, method, path string, body, response any, contentType string) error {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -137,7 +155,7 @@ func (p *panelKubernetesAPI) do(ctx context.Context, method, path string, body, 
 	request.Header.Set("Authorization", "Bearer "+p.token)
 	request.Header.Set("Accept", "application/json")
 	if body != nil {
-		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Content-Type", contentType)
 	}
 
 	result, err := p.client.Do(request)
@@ -260,6 +278,9 @@ func (p siteProvisioner) prepareEnvironment(ctx context.Context) (provisionResul
 	var target map[string]any
 	err := p.panel.Get(ctx, p.deploymentPath(p.args.TargetEnvAppName), &target)
 	if err == nil {
+		if err = p.patchExistingEnvironmentPodExtensions(ctx, target); err != nil {
+			return provisionResult{}, err
+		}
 		return provisionResult{
 			EnvironmentAppName: p.args.TargetEnvAppName,
 			NginxVhostTemplate: nginxVhostTemplate(target),
@@ -291,6 +312,34 @@ func (p siteProvisioner) prepareEnvironment(ctx context.Context) (provisionResul
 		NginxVhostTemplate: nginxVhostTemplate(created),
 		CreatedEnvironment: true,
 	}, nil
+}
+
+func (p siteProvisioner) patchExistingEnvironmentPodExtensions(ctx context.Context, deployment map[string]any) error {
+	if !hasProvisionPodExtensions(p.args) {
+		return nil
+	}
+	template := objectMap(objectMap(deployment, "spec"), "template")
+	templateMetadata := objectMap(template, "metadata")
+	templateAnnotations := objectMap(templateMetadata, "annotations")
+	if err := applyProvisionPodExtensions(objectMap(template, "spec"), templateAnnotations, p.args); err != nil {
+		return fmt.Errorf("apply sidecars to existing environment deployment: %w", err)
+	}
+	patch := map[string]any{
+		"spec": map[string]any{
+			"template": template,
+		},
+	}
+	if err := p.panel.Patch(ctx, p.deploymentPath(p.args.TargetEnvAppName), patch, nil); err != nil {
+		return fmt.Errorf("patch existing environment deployment sidecars: %w", err)
+	}
+	return nil
+}
+
+func hasProvisionPodExtensions(args siteProvisionCommandArgs) bool {
+	return strings.TrimSpace(args.SidecarContainers) != "" ||
+		strings.TrimSpace(args.SidecarInitContainers) != "" ||
+		strings.TrimSpace(args.SidecarVolumes) != "" ||
+		strings.TrimSpace(args.PodAnnotations) != ""
 }
 
 func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source map[string]any) (map[string]any, error) {
@@ -332,6 +381,9 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	templateLabels := objectMap(templateMetadata, "labels")
 	templateLabels["app"] = p.args.TargetEnvAppName
 	podSpec := objectMap(template, "spec")
+	if err := applyProvisionPodExtensions(podSpec, templateAnnotations, p.args); err != nil {
+		return nil, err
+	}
 	containers, ok := podSpec["containers"].([]any)
 	if !ok || len(containers) == 0 {
 		return nil, errors.New("source environment deployment has no containers")
@@ -365,6 +417,111 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 		},
 	}
 	return result, nil
+}
+
+func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteProvisionCommandArgs) error {
+	containers, err := decodeProvisionObjectList(args.SidecarContainers, "sidecar containers")
+	if err != nil {
+		return err
+	}
+	initContainers, err := decodeProvisionObjectList(args.SidecarInitContainers, "sidecar init containers")
+	if err != nil {
+		return err
+	}
+	volumes, err := decodeProvisionObjectList(args.SidecarVolumes, "sidecar volumes")
+	if err != nil {
+		return err
+	}
+	podAnnotations, err := decodeProvisionObjectMap(args.PodAnnotations, "pod annotations")
+	if err != nil {
+		return err
+	}
+
+	if len(containers) > 0 {
+		existing, err := optionalObjectList(podSpec, "containers", "target environment containers")
+		if err != nil {
+			return err
+		}
+		podSpec["containers"] = mergeNamedObjectLists(existing, containers)
+	}
+	if len(initContainers) > 0 {
+		existing, err := optionalObjectList(podSpec, "initContainers", "target environment initContainers")
+		if err != nil {
+			return err
+		}
+		podSpec["initContainers"] = mergeNamedObjectLists(existing, initContainers)
+	}
+	if len(volumes) > 0 {
+		existing, err := optionalObjectList(podSpec, "volumes", "target environment volumes")
+		if err != nil {
+			return err
+		}
+		podSpec["volumes"] = mergeNamedObjectLists(existing, volumes)
+	}
+	for key, value := range podAnnotations {
+		annotations[key] = value
+	}
+	return nil
+}
+
+func decodeProvisionObjectList(encoded, description string) ([]any, error) {
+	if strings.TrimSpace(encoded) == "" {
+		return nil, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", description, err)
+	}
+	items := []any{}
+	if err = json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", description, err)
+	}
+	for _, item := range items {
+		if _, ok := item.(map[string]any); !ok {
+			return nil, fmt.Errorf("%s must contain JSON objects", description)
+		}
+	}
+	return items, nil
+}
+
+func decodeProvisionObjectMap(encoded, description string) (map[string]any, error) {
+	if strings.TrimSpace(encoded) == "" {
+		return nil, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decode %s: %w", description, err)
+	}
+	value := map[string]any{}
+	if err = json.Unmarshal(data, &value); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", description, err)
+	}
+	return value, nil
+}
+
+func mergeNamedObjectLists(existing, additions []any) []any {
+	result := append([]any(nil), existing...)
+	indexByName := make(map[string]int, len(result))
+	for index, item := range result {
+		if object, ok := item.(map[string]any); ok {
+			if name, _ := object["name"].(string); name != "" {
+				indexByName[name] = index
+			}
+		}
+	}
+	for _, item := range additions {
+		object := item.(map[string]any)
+		name, _ := object["name"].(string)
+		if index, exists := indexByName[name]; name != "" && exists {
+			result[index] = object
+			continue
+		}
+		if name != "" {
+			indexByName[name] = len(result)
+		}
+		result = append(result, object)
+	}
+	return result
 }
 
 func (p siteProvisioner) createIngress(ctx context.Context) (string, error) {
