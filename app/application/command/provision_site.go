@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -42,6 +43,7 @@ type siteProvisionCommandArgs struct {
 	SidecarContainers     string
 	SidecarInitContainers string
 	SidecarVolumes        string
+	HostAliases           string
 	PodAnnotations        string
 }
 
@@ -75,6 +77,7 @@ func (SiteProvision) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&siteProvisionArgsValue.SidecarContainers, "sidecar-containers", "", "base64 encoded sidecar containers JSON")
 	cmd.Flags().StringVar(&siteProvisionArgsValue.SidecarInitContainers, "sidecar-init-containers", "", "base64 encoded sidecar init containers JSON")
 	cmd.Flags().StringVar(&siteProvisionArgsValue.SidecarVolumes, "sidecar-volumes", "", "base64 encoded sidecar volumes JSON")
+	cmd.Flags().StringVar(&siteProvisionArgsValue.HostAliases, "host-aliases", "", "base64 encoded Pod hostAliases JSON")
 	cmd.Flags().StringVar(&siteProvisionArgsValue.PodAnnotations, "pod-annotations", "", "base64 encoded pod annotations JSON")
 }
 
@@ -343,6 +346,7 @@ func hasProvisionPodExtensions(args siteProvisionCommandArgs) bool {
 	return strings.TrimSpace(args.SidecarContainers) != "" ||
 		strings.TrimSpace(args.SidecarInitContainers) != "" ||
 		strings.TrimSpace(args.SidecarVolumes) != "" ||
+		strings.TrimSpace(args.HostAliases) != "" ||
 		strings.TrimSpace(args.PodAnnotations) != ""
 }
 
@@ -436,6 +440,10 @@ func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteP
 	if err != nil {
 		return err
 	}
+	hostAliases, err := decodeProvisionObjectList(args.HostAliases, "host aliases")
+	if err != nil {
+		return err
+	}
 	podAnnotations, err := decodeProvisionObjectMap(args.PodAnnotations, "pod annotations")
 	if err != nil {
 		return err
@@ -468,6 +476,17 @@ func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteP
 			return err
 		}
 		podSpec["volumes"] = mergeNamedObjectLists(existing, volumes)
+	}
+	if len(hostAliases) > 0 {
+		existing, err := optionalObjectList(podSpec, "hostAliases", "target environment hostAliases")
+		if err != nil {
+			return err
+		}
+		merged, err := mergeHostAliasLists(existing, hostAliases)
+		if err != nil {
+			return err
+		}
+		podSpec["hostAliases"] = merged
 	}
 	for key, value := range podAnnotations {
 		annotations[key] = value
@@ -601,6 +620,64 @@ func mergeNamedObjectLists(existing, additions []any) []any {
 		result = append(result, object)
 	}
 	return result
+}
+
+func mergeHostAliasLists(existing, additions []any) ([]any, error) {
+	result := make([]any, 0, len(existing)+len(additions))
+	indexByIP := make(map[string]int)
+	hostnameIPs := make(map[string]string)
+
+	for _, item := range append(append([]any(nil), existing...), additions...) {
+		alias, ok := item.(map[string]any)
+		if !ok {
+			return nil, errors.New("host aliases must contain JSON objects")
+		}
+		ip, _ := alias["ip"].(string)
+		ip = strings.TrimSpace(ip)
+		if net.ParseIP(ip) == nil {
+			return nil, fmt.Errorf("host alias has invalid IP %q", ip)
+		}
+		hostnamesValue, ok := alias["hostnames"].([]any)
+		if !ok || len(hostnamesValue) == 0 {
+			return nil, fmt.Errorf("host alias %s has no hostnames", ip)
+		}
+
+		hostnames := make([]any, 0, len(hostnamesValue))
+		for _, value := range hostnamesValue {
+			hostname, ok := value.(string)
+			hostname = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(hostname)), ".")
+			if !ok || hostname == "" {
+				return nil, fmt.Errorf("host alias %s contains an invalid hostname", ip)
+			}
+			if existingIP, exists := hostnameIPs[hostname]; exists && existingIP != ip {
+				return nil, fmt.Errorf("host alias %s maps to both %s and %s", hostname, existingIP, ip)
+			}
+			hostnameIPs[hostname] = ip
+			hostnames = appendUniqueStringValue(hostnames, hostname)
+		}
+
+		if index, exists := indexByIP[ip]; exists {
+			existingAlias := result[index].(map[string]any)
+			existingHostnames := existingAlias["hostnames"].([]any)
+			for _, hostname := range hostnames {
+				existingHostnames = appendUniqueStringValue(existingHostnames, hostname.(string))
+			}
+			existingAlias["hostnames"] = existingHostnames
+			continue
+		}
+		indexByIP[ip] = len(result)
+		result = append(result, map[string]any{"ip": ip, "hostnames": hostnames})
+	}
+	return result, nil
+}
+
+func appendUniqueStringValue(values []any, value string) []any {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func (p siteProvisioner) createIngress(ctx context.Context) (string, error) {
