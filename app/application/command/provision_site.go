@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +20,7 @@ import (
 	"github.com/we7coreteam/w7-rangine-go/v2/src/console"
 )
 
-const sidecarTargetPortEnvName = "INBOUND_TARGET_PORT"
+const rootCAInjectionAnnotationKey = "w7.cc/inject-root-ca"
 
 type siteProvisionCommandArgs struct {
 	PanelURL              string
@@ -427,11 +426,19 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	return result, nil
 }
 
+func ensureRootCAInjectionAnnotation(sidecarContainers []any, annotations map[string]any) {
+	if len(sidecarContainers) == 0 {
+		return
+	}
+	annotations[rootCAInjectionAnnotationKey] = "true"
+}
+
 func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteProvisionCommandArgs) error {
 	containers, err := decodeProvisionObjectList(args.SidecarContainers, "sidecar containers")
 	if err != nil {
 		return err
 	}
+	ensureRootCAInjectionAnnotation(containers, annotations)
 	initContainers, err := decodeProvisionObjectList(args.SidecarInitContainers, "sidecar init containers")
 	if err != nil {
 		return err
@@ -447,13 +454,6 @@ func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteP
 	podAnnotations, err := decodeProvisionObjectMap(args.PodAnnotations, "pod annotations")
 	if err != nil {
 		return err
-	}
-
-	runtimeTargetPort := resolveProvisionTargetPort(podSpec)
-	hasRuntimeTargetPort := overrideSidecarTargetPort(containers, runtimeTargetPort)
-	hasRuntimeTargetPort = overrideSidecarTargetPort(initContainers, runtimeTargetPort) || hasRuntimeTargetPort
-	if hasRuntimeTargetPort && runtimeTargetPort == "" {
-		return errors.New("sidecar requires a runtime target port, but the environment container declares no ports")
 	}
 
 	if len(containers) > 0 {
@@ -492,74 +492,6 @@ func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteP
 		annotations[key] = value
 	}
 	return nil
-}
-
-func resolveProvisionTargetPort(podSpec map[string]any) string {
-	containers, ok := podSpec["containers"].([]any)
-	if !ok || len(containers) == 0 {
-		return ""
-	}
-	container, ok := containers[0].(map[string]any)
-	if !ok {
-		return ""
-	}
-	ports, ok := container["ports"].([]any)
-	if !ok || len(ports) == 0 {
-		return ""
-	}
-	port, ok := ports[0].(map[string]any)
-	if !ok {
-		return ""
-	}
-	switch value := port["containerPort"].(type) {
-	case float64:
-		if value > 0 && value <= 65535 && value == float64(int(value)) {
-			return strconv.Itoa(int(value))
-		}
-	case int:
-		if value > 0 && value <= 65535 {
-			return strconv.Itoa(value)
-		}
-	case int32:
-		if value > 0 && value <= 65535 {
-			return strconv.Itoa(int(value))
-		}
-	case int64:
-		if value > 0 && value <= 65535 {
-			return strconv.FormatInt(value, 10)
-		}
-	case json.Number:
-		if parsed, err := strconv.Atoi(value.String()); err == nil && parsed > 0 && parsed <= 65535 {
-			return strconv.Itoa(parsed)
-		}
-	}
-	return ""
-}
-
-func overrideSidecarTargetPort(containers []any, targetPort string) bool {
-	found := false
-	for _, item := range containers {
-		container, ok := item.(map[string]any)
-		if !ok {
-			continue
-		}
-		env, ok := container["env"].([]any)
-		if !ok {
-			continue
-		}
-		for _, envItem := range env {
-			variable, ok := envItem.(map[string]any)
-			if !ok || variable["name"] != sidecarTargetPortEnvName {
-				continue
-			}
-			found = true
-			if targetPort != "" {
-				variable["value"] = targetPort
-				delete(variable, "valueFrom")
-			}
-		}
-	}
-	return found
 }
 
 func decodeProvisionObjectList(encoded, description string) ([]any, error) {
