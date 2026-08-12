@@ -405,6 +405,10 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 		return nil, errors.New("source environment deployment has an invalid first container")
 	}
 	container["name"] = p.args.TargetEnvAppName
+	if strings.EqualFold(strings.TrimSpace(fmt.Sprint(templateAnnotations[systemRebootRestoreAnnotationKey])), "false") {
+		podSpec["runtimeClassName"] = "sysbox-runc"
+		podSpec["hostUsers"] = false
+	}
 	if err := rebuildPersistentRootfsAnnotation(templateAnnotations, p.args.TargetEnvAppName, sharedPVCName); err != nil {
 		return nil, fmt.Errorf("configure persistent rootfs: %w", err)
 	}
@@ -446,7 +450,7 @@ func rebuildPersistentRootfsAnnotation(annotations map[string]any, containerName
 	value, err := json.Marshal([]map[string]any{{
 		"name":                    containerName,
 		"volumeName":              pvcName,
-		"path":                    fmt.Sprintf("/server/%s/system", containerName),
+		"path":                    fmt.Sprintf("/www/server/%s/system", containerName),
 		"persistentSpecialMounts": true,
 	}})
 	if err != nil {
@@ -734,7 +738,7 @@ func mergeSiteManagerStorage(target, siteManager map[string]any) (string, error)
 	}
 	sourceVolumes, ok := sourcePodSpec["volumes"].([]any)
 	if !ok || len(sourceVolumes) == 0 {
-		return "", errors.New("site-manager deployment requires volumes[0]")
+		return "", errors.New("site-manager deployment requires a PVC volume")
 	}
 
 	targetPodSpec, err := deploymentPodSpec(target, "target environment")
@@ -766,13 +770,23 @@ func mergeSiteManagerStorage(target, siteManager map[string]any) (string, error)
 	if err != nil {
 		return "", err
 	}
-	sourceVolume, ok := sourceVolumes[0].(map[string]any)
-	if !ok {
-		return "", errors.New("site-manager deployment volumes[0] is invalid")
+	var sourceVolume map[string]any
+	for index, item := range sourceVolumes {
+		volume, ok := item.(map[string]any)
+		if !ok {
+			return "", fmt.Errorf("site-manager deployment volumes[%d] is invalid", index)
+		}
+		if _, ok := volume["persistentVolumeClaim"].(map[string]any); ok {
+			sourceVolume = volume
+			break
+		}
 	}
-	claimName, _ := objectMap(sourceVolume, "persistentVolumeClaim")["claimName"].(string)
+	if sourceVolume == nil {
+		return "", nil
+	}
+	claimName, _ := sourceVolume["name"].(string)
 	if strings.TrimSpace(claimName) == "" {
-		return "", errors.New("site-manager deployment volumes[0] has no PVC claimName")
+		return "", errors.New("site-manager deployment PVC volume has no name")
 	}
 	if !containsNamedObject(targetVolumes, sourceVolume) {
 		targetVolumes = append(targetVolumes, deepCopyJSONValue(sourceVolume))

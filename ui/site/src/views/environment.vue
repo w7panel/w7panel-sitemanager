@@ -453,11 +453,16 @@ export default {
     },
     applyPersistentRootfsAnnotation(data, sourceAnnotations, siteManagerData) {
       const disabled = String(sourceAnnotations?.['w7.cc/system-reboot-restore'] || '').toLowerCase() === 'false'
+      const podSpec = data?.spec?.template?.spec
+      if (podSpec && disabled) {
+        podSpec.runtimeClassName = 'sysbox-runc'
+        podSpec.hostUsers = false
+      }
       const annotations = data?.spec?.template?.metadata?.annotations
       const containerName = data?.spec?.template?.spec?.containers?.[0]?.name
-      const pvcName = siteManagerData?.spec?.template?.spec?.volumes?.find(item => item?.persistentVolumeClaim?.claimName)?.persistentVolumeClaim?.claimName
+      const pvcName = siteManagerData?.spec?.template?.spec?.volumes?.find(item => item?.persistentVolumeClaim?.claimName)?.name
       if (!annotations || !disabled || !containerName || !pvcName) return
-      annotations['sysbox/rootfs-rw-layer'] = JSON.stringify([{ name: containerName, volumeName: pvcName, path: `/server/${containerName}/system`, persistentSpecialMounts: true }])
+      annotations['sysbox/rootfs-rw-layer'] = JSON.stringify([{ name: containerName, volumeName: pvcName, path: `/www/server/${containerName}/system`, persistentSpecialMounts: true }])
     },
     copy(app_name, version) {
       let name
