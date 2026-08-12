@@ -10,7 +10,7 @@ import (
 	"github.com/w7panel/w7panel-sitemanager/common/dao"
 	"github.com/w7panel/w7panel-sitemanager/common/entity"
 	"github.com/w7panel/w7panel-sitemanager/common/helper"
-	"github.com/w7panel/w7panel-sitemanager/common/service/zpk"
+	zpkmarket "github.com/w7panel/w7panel-sitemanager/common/service/zpk-market"
 	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 )
 
@@ -67,17 +67,23 @@ func (l SiteEnvironment) getSiteEnvironmentLocalToolsDir(siteEnvironment entity.
 	return curEnvironmentToolsAttachDir
 }
 
-func (l SiteEnvironment) GetSupportEnvironmentList() (*zpk.ListResp, error) {
-	val, exists := environmentListCache.Get("site_environment_list_cache")
+func (l SiteEnvironment) GetSupportEnvironmentList() (*zpkmarket.ListResp, error) {
+	val, exists := environmentListCache.Get("site_environment_list_cache_v2")
 	if !exists {
-		listResp, err := zpk.ZpkService{
-			BaseUrl: "https://zpk.w7.cc",
-		}.GetEnvironmentZpkList()
+		marketResp, err := zpkmarket.Client{}.ListFormulas(zpkmarket.FormulaListRequest{
+			Page: 1, Limit: 100, Tag: "运行环境",
+		})
 		if err != nil {
 			return nil, err
+		}
+		listResp := &zpkmarket.ListResp{Limit: marketResp.Limit, Page: marketResp.Page, Total: marketResp.Total, List: make([]zpkmarket.ZpkInfo, 0, len(marketResp.List))}
+		for _, formula := range marketResp.List {
+			listResp.List = append(listResp.List, zpkmarket.ZpkInfo{
+				Name: formula.Name, Identifier: formula.Identify, Icon: formula.Icon, Description: formula.Description,
+			})
 		}
 		environmentListCache.Set("site_environment_list_cache", listResp, cache.DefaultExpiration)
 		return listResp, nil
 	}
-	return val.(*zpk.ListResp), nil
+	return val.(*zpkmarket.ListResp), nil
 }

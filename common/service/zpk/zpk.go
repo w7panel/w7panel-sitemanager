@@ -2,6 +2,7 @@ package zpk
 
 import (
 	"encoding/json"
+	zpkmarket "github.com/w7panel/w7panel-sitemanager/common/service/zpk-market"
 	"io"
 	"net/http"
 	"net/url"
@@ -21,20 +22,6 @@ type ListReq struct {
 	Keyword string `json:"keyword"`
 }
 
-type ZpkInfo struct {
-	Name        string `json:"name"`
-	Identifier  string `json:"identifie"`
-	Icon        string `json:"icon"`
-	Description string `json:"description"`
-}
-
-type ListResp struct {
-	Limit int       `json:"limit"`
-	Page  int       `json:"page"`
-	Total int       `json:"total"`
-	List  []ZpkInfo `json:"list"`
-}
-
 type ApiError struct {
 	ErrorMsg string `json:"error"`
 	Code     int    `json:"code"`
@@ -48,7 +35,7 @@ type ZpkService struct {
 	BaseUrl string
 }
 
-func (s ZpkService) GetEnvironmentZpkList() (*ListResp, error) {
+func (s ZpkService) GetEnvironmentZpkList() (*zpkmarket.ListResp, error) {
 	return s.GetZpkList(ListReq{
 		Status: []int{2, 99},
 		Page:   1,
@@ -57,7 +44,7 @@ func (s ZpkService) GetEnvironmentZpkList() (*ListResp, error) {
 	})
 }
 
-func (s ZpkService) GetZpkList(listReq ListReq) (*ListResp, error) {
+func (s ZpkService) GetZpkList(listReq ListReq) (*zpkmarket.ListResp, error) {
 	data := url.Values{}
 	// 对于数组类型的字段，Go 的 Encode() 方法会自动处理为 key=val1&key=val2 的形式
 	for _, status := range listReq.Status {
@@ -102,7 +89,7 @@ func (s ZpkService) GetZpkList(listReq ListReq) (*ListResp, error) {
 		return nil, apiError
 	}
 
-	listResp := &ListResp{}
+	listResp := &zpkmarket.ListResp{}
 	successResp := &SuccessResp{
 		Data: listResp,
 	}
@@ -111,10 +98,10 @@ func (s ZpkService) GetZpkList(listReq ListReq) (*ListResp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return successResp.Data.(*ListResp), nil
+	return successResp.Data.(*zpkmarket.ListResp), nil
 }
 
-func (s ZpkService) GetZpkInfo(name string) (*ZpkInfo, error) {
+func (s ZpkService) GetZpkInfo(name string) (*zpkmarket.ZpkInfo, error) {
 	req, err := http.NewRequest(http.MethodGet, s.BaseUrl+"/zpk/respo/info/"+name, nil)
 	if err != nil {
 		return nil, err
@@ -149,7 +136,7 @@ func (s ZpkService) GetZpkInfo(name string) (*ZpkInfo, error) {
 		return nil, apiError
 	}
 
-	info := &ZpkInfo{}
+	info := &zpkmarket.ZpkInfo{}
 	err = json.Unmarshal(respBody, info)
 	if err != nil {
 		return nil, err
