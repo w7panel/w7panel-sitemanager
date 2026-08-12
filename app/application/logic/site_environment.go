@@ -68,7 +68,7 @@ func (l SiteEnvironment) getSiteEnvironmentLocalToolsDir(siteEnvironment entity.
 }
 
 func (l SiteEnvironment) GetSupportEnvironmentList() (*zpkmarket.ListResp, error) {
-	val, exists := environmentListCache.Get("site_environment_list_cache_v2")
+	val, exists := environmentListCache.Get("site_environment_list_cache_v3")
 	if !exists {
 		marketResp, err := zpkmarket.Client{}.ListFormulas(zpkmarket.FormulaListRequest{
 			Page: 1, Limit: 100, Tag: "运行环境",
@@ -79,7 +79,7 @@ func (l SiteEnvironment) GetSupportEnvironmentList() (*zpkmarket.ListResp, error
 		listResp := &zpkmarket.ListResp{Limit: marketResp.Limit, Page: marketResp.Page, Total: marketResp.Total, List: make([]zpkmarket.ZpkInfo, 0, len(marketResp.List))}
 		for _, formula := range marketResp.List {
 			listResp.List = append(listResp.List, zpkmarket.ZpkInfo{
-				Name: formula.Name, Identifier: formula.Identify, Icon: formula.Icon, Description: formula.Description,
+				Name: formula.Name, Identifier: formula.Identify, Identifie: formula.Identify, Icon: formula.Icon, Description: formula.Description,
 			})
 		}
 		environmentListCache.Set("site_environment_list_cache", listResp, cache.DefaultExpiration)

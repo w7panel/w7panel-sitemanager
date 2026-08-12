@@ -43,8 +43,11 @@ type Formula struct {
 
 // ZpkInfo is the compact ZPK representation consumed by site management.
 type ZpkInfo struct {
-	Name        string `json:"name"`
+	Name string `json:"name"`
+	// Identifier is the canonical Go field. Identifie keeps compatibility with
+	// the existing UI contract, which historically used this misspelling.
 	Identifier  string `json:"identify"`
+	Identifie   string `json:"identifie"`
 	Icon        string `json:"icon"`
 	Description string `json:"description"`
 }
