@@ -356,7 +356,7 @@ export default {
       this.getData(1)
     },
     installEnvironment() {
-      emitWujieEvent('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.activeLang.identifie}`)
+      emitWujieEvent('toStoreInstall', this.activeLang.formula_url)
       let timer = null
       timer = setInterval(() => {
         this.getAppConfig(this.activeLang.identifie).then(res => {

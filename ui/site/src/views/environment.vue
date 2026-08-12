@@ -384,7 +384,8 @@ export default {
       })
     },
     installEnvironment() {
-      emitWujieEvent('toStoreInstall', `https://zpk.w7.cc/zpk/respo/info/${this.type}`)
+      const environment = this.environmentList.find(item => item.identifie === this.type)
+      emitWujieEvent('toStoreInstall', environment?.formula_url || `https://zpk.w7.cc/zpk/respo/info/${this.type}`)
       return new Promise((res) => {
         let timer = null
         timer = setInterval(() => {

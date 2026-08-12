@@ -50,6 +50,7 @@ type ZpkInfo struct {
 	Identifie   string `json:"identifie"`
 	Icon        string `json:"icon"`
 	Description string `json:"description"`
+	FormulaURL  string `json:"formula_url"`
 }
 
 type ListResp struct {
