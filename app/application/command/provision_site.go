@@ -20,7 +20,11 @@ import (
 	"github.com/we7coreteam/w7-rangine-go/v2/src/console"
 )
 
-const rootCAInjectionAnnotationKey = "w7.cc/inject-root-ca"
+const (
+	rootCAInjectionAnnotationKey     = "w7.cc/inject-root-ca"
+	systemRebootRestoreAnnotationKey = "w7.cc/system-reboot-restore"
+	sysboxRootfsRWLayerAnnotation    = "sysbox/rootfs-rw-layer"
+)
 
 type siteProvisionCommandArgs struct {
 	PanelURL              string
@@ -361,7 +365,8 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	if err := p.panel.Get(ctx, p.deploymentPath("w7-sitemanager-site-manager"), &siteManager); err != nil {
 		return nil, fmt.Errorf("query site-manager deployment for shared storage: %w", err)
 	}
-	if err := mergeSiteManagerStorage(result, siteManager); err != nil {
+	sharedPVCName, err := mergeSiteManagerStorage(result, siteManager)
+	if err != nil {
 		return nil, fmt.Errorf("merge site-manager shared storage: %w", err)
 	}
 	delete(templateAnnotations, "w7.cc/yaml_copy")
@@ -400,6 +405,9 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 		return nil, errors.New("source environment deployment has an invalid first container")
 	}
 	container["name"] = p.args.TargetEnvAppName
+	if err := rebuildPersistentRootfsAnnotation(templateAnnotations, p.args.TargetEnvAppName, sharedPVCName); err != nil {
+		return nil, fmt.Errorf("configure persistent rootfs: %w", err)
+	}
 	if imageTemplate, _ := templateAnnotations["w7.cc/image_template"].(string); imageTemplate != "" {
 		container["image"] = strings.ReplaceAll(imageTemplate, "{version}", p.args.EnvironmentVersion)
 	}
@@ -426,6 +434,28 @@ func (p siteProvisioner) buildEnvironmentDeployment(ctx context.Context, source 
 	return result, nil
 }
 
+func rebuildPersistentRootfsAnnotation(annotations map[string]any, containerName, pvcName string) error {
+	restoreValue, configured := annotations[systemRebootRestoreAnnotationKey]
+	if !configured || !strings.EqualFold(strings.TrimSpace(fmt.Sprint(restoreValue)), "false") {
+		delete(annotations, sysboxRootfsRWLayerAnnotation)
+		return nil
+	}
+	if strings.TrimSpace(pvcName) == "" {
+		return errors.New("site-manager shared storage has no PVC claimName")
+	}
+	value, err := json.Marshal([]map[string]any{{
+		"name":                    containerName,
+		"volumeName":              pvcName,
+		"path":                    fmt.Sprintf("/server/%s/system", containerName),
+		"persistentSpecialMounts": true,
+	}})
+	if err != nil {
+		return fmt.Errorf("encode annotation: %w", err)
+	}
+	annotations[sysboxRootfsRWLayerAnnotation] = string(value)
+	return nil
+}
+
 func ensureRootCAInjectionAnnotation(sidecarContainers []any, annotations map[string]any) {
 	if len(sidecarContainers) == 0 {
 		return
@@ -438,7 +468,6 @@ func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteP
 	if err != nil {
 		return err
 	}
-	ensureRootCAInjectionAnnotation(containers, annotations)
 	initContainers, err := decodeProvisionObjectList(args.SidecarInitContainers, "sidecar init containers")
 	if err != nil {
 		return err
@@ -491,6 +520,10 @@ func applyProvisionPodExtensions(podSpec, annotations map[string]any, args siteP
 	for key, value := range podAnnotations {
 		annotations[key] = value
 	}
+	// A provisioned sidecar must always receive the panel root CA. Apply this
+	// after caller-provided annotations so a stale or explicit false value
+	// cannot disable the mount required by the sidecar.
+	ensureRootCAInjectionAnnotation(containers, annotations)
 	return nil
 }
 
@@ -682,48 +715,48 @@ func isPanelNotFound(err error) bool {
 	return errors.As(err, &apiError) && apiError.StatusCode == http.StatusNotFound
 }
 
-func mergeSiteManagerStorage(target, siteManager map[string]any) error {
+func mergeSiteManagerStorage(target, siteManager map[string]any) (string, error) {
 	sourcePodSpec, err := deploymentPodSpec(siteManager, "site-manager")
 	if err != nil {
-		return err
+		return "", err
 	}
 	sourceContainers, ok := sourcePodSpec["containers"].([]any)
 	if !ok || len(sourceContainers) == 0 {
-		return errors.New("site-manager deployment has no containers")
+		return "", errors.New("site-manager deployment has no containers")
 	}
 	sourceContainer, ok := sourceContainers[0].(map[string]any)
 	if !ok {
-		return errors.New("site-manager deployment has an invalid first container")
+		return "", errors.New("site-manager deployment has an invalid first container")
 	}
 	sourceMounts, ok := sourceContainer["volumeMounts"].([]any)
 	if !ok || len(sourceMounts) <= 3 {
-		return errors.New("site-manager deployment requires volumeMounts[2] and volumeMounts[3]")
+		return "", errors.New("site-manager deployment requires volumeMounts[2] and volumeMounts[3]")
 	}
 	sourceVolumes, ok := sourcePodSpec["volumes"].([]any)
 	if !ok || len(sourceVolumes) == 0 {
-		return errors.New("site-manager deployment requires volumes[0]")
+		return "", errors.New("site-manager deployment requires volumes[0]")
 	}
 
 	targetPodSpec, err := deploymentPodSpec(target, "target environment")
 	if err != nil {
-		return err
+		return "", err
 	}
 	targetContainers, ok := targetPodSpec["containers"].([]any)
 	if !ok || len(targetContainers) == 0 {
-		return errors.New("target environment deployment has no containers")
+		return "", errors.New("target environment deployment has no containers")
 	}
 	targetContainer, ok := targetContainers[0].(map[string]any)
 	if !ok {
-		return errors.New("target environment deployment has an invalid first container")
+		return "", errors.New("target environment deployment has an invalid first container")
 	}
 	targetMounts, err := optionalObjectList(targetContainer, "volumeMounts", "target environment volumeMounts")
 	if err != nil {
-		return err
+		return "", err
 	}
 	for _, index := range []int{2, 3} {
 		mount, ok := sourceMounts[index].(map[string]any)
 		if !ok {
-			return fmt.Errorf("site-manager deployment volumeMounts[%d] is invalid", index)
+			return "", fmt.Errorf("site-manager deployment volumeMounts[%d] is invalid", index)
 		}
 		targetMounts = append(targetMounts, deepCopyJSONValue(mount))
 	}
@@ -731,17 +764,21 @@ func mergeSiteManagerStorage(target, siteManager map[string]any) error {
 
 	targetVolumes, err := optionalObjectList(targetPodSpec, "volumes", "target environment volumes")
 	if err != nil {
-		return err
+		return "", err
 	}
 	sourceVolume, ok := sourceVolumes[0].(map[string]any)
 	if !ok {
-		return errors.New("site-manager deployment volumes[0] is invalid")
+		return "", errors.New("site-manager deployment volumes[0] is invalid")
+	}
+	claimName, _ := objectMap(sourceVolume, "persistentVolumeClaim")["claimName"].(string)
+	if strings.TrimSpace(claimName) == "" {
+		return "", errors.New("site-manager deployment volumes[0] has no PVC claimName")
 	}
 	if !containsNamedObject(targetVolumes, sourceVolume) {
 		targetVolumes = append(targetVolumes, deepCopyJSONValue(sourceVolume))
 	}
 	targetPodSpec["volumes"] = targetVolumes
-	return nil
+	return claimName, nil
 }
 
 func deploymentPodSpec(deployment map[string]any, description string) (map[string]any, error) {

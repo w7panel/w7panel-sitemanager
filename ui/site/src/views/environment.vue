@@ -450,15 +450,25 @@ export default {
         }
       ]
     },
+    applyPersistentRootfsAnnotation(data, sourceAnnotations, siteManagerData) {
+      const disabled = String(sourceAnnotations?.['w7.cc/system-reboot-restore'] || '').toLowerCase() === 'false'
+      const annotations = data?.spec?.template?.metadata?.annotations
+      const containerName = data?.spec?.template?.spec?.containers?.[0]?.name
+      const pvcName = siteManagerData?.spec?.template?.spec?.volumes?.find(item => item?.persistentVolumeClaim?.claimName)?.persistentVolumeClaim?.claimName
+      if (!annotations || !disabled || !containerName || !pvcName) return
+      annotations['sysbox/rootfs-rw-layer'] = JSON.stringify([{ name: containerName, volumeName: pvcName, path: `/server/${containerName}/system`, persistentSpecialMounts: true }])
+    },
     copy(app_name, version) {
       let name
       return new Promise((resolve) => {
         panelAxios.get("/apis/apps/v1/namespaces/default/deployments/" + app_name.replace(/_/g, '-')).then(async res => {
           if (!res?.data) { return }
           let data = res?.data;
+          const sourceAnnotations = data?.spec?.template?.metadata?.annotations || {}
           const autoFillRules = this.getAutoFillRules(data)
+          let siteManagerData
           if (autoFillRules) {
-            const siteManagerData = await this.getAppConfig((window.$wujie?.props?.group || window.$wujie?.props?.releaseName) + '-site-manager')
+            siteManagerData = await this.getAppConfig((window.$wujie?.props?.group || window.$wujie?.props?.releaseName) + '-site-manager')
             data = fillData(data, autoFillRules, siteManagerData.data)
           }
 
@@ -470,6 +480,7 @@ export default {
           data?.spec?.selector?.matchLabels && (data.spec.selector.matchLabels.app = name);
           data?.spec?.template?.metadata?.labels && (data.spec.template.metadata.labels.app = name);
           data?.spec?.template?.spec?.containers?.[0]?.name && (data.spec.template.spec.containers[0].name = name)
+          this.applyPersistentRootfsAnnotation(data, sourceAnnotations, siteManagerData?.data)
 
           data?.spec?.template?.spec?.containers?.[0]?.image && (data.spec.template.spec.containers[0].image = this.versionImageTemplate.replace('{version}', version))
 
