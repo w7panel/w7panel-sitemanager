@@ -746,7 +746,7 @@ export default {
       annotations['sysbox/rootfs-rw-layer'] = JSON.stringify([{
         name: containerName,
         volumeName: pvcName,
-        path: `/www/server/${containerName}/system`,
+        path: `www/server/${containerName}/system`,
         persistentSpecialMounts: true
       }])
     },

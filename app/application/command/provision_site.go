@@ -450,7 +450,7 @@ func rebuildPersistentRootfsAnnotation(annotations map[string]any, containerName
 	value, err := json.Marshal([]map[string]any{{
 		"name":                    containerName,
 		"volumeName":              pvcName,
-		"path":                    fmt.Sprintf("/www/server/%s/system", containerName),
+		"path":                    fmt.Sprintf("www/server/%s/system", containerName),
 		"persistentSpecialMounts": true,
 	}})
 	if err != nil {

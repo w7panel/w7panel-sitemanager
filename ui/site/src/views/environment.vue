@@ -120,7 +120,7 @@
                 :class="createForm.name === item.name ? 'environment-type-item-active' : ''"
                 v-for="item in environmentList" :key="item.name" @click="getEnvironmentVersionList(item.name)">
                 <div class="environment-type-item-icon">
-                  <img style="width: 40px;height: 40px" :src="'http://zpk.w7.cc' + item.icon" alt="">
+                  <img style="width: 40px;height: 40px" :src="getEnvironmentIcon(item.icon || item.logo)" alt="">
                 </div>
                 <div class="environment-type-item-name">
                   {{ item.name }}
@@ -331,7 +331,10 @@ export default {
     },
     getEnvironmentList() {
       myAxios.get('/api/environment/support-list').then(res => {
-        const environmentList = res.data.data.list
+        const environmentList = res.data.data.list.map(item => ({
+          ...item,
+          icon: this.getEnvironmentIcon(item.icon || item.logo)
+        }))
         environmentList.sort((a, b) => {
           if (a.name.toLowerCase() === 'php') {
             return -1
@@ -342,6 +345,15 @@ export default {
         })
         this.environmentList = environmentList
       })
+    },
+    getEnvironmentIcon(icon) {
+      if (!icon) {
+        return ''
+      }
+      if (/^https?:\/\//i.test(icon)) {
+        return icon
+      }
+      return 'https://img.w7.cc/' + icon.replace(/^\/+/, '')
     },
     async getEnvironmentVersionList(name) {
       this.versionLoading = true
@@ -462,7 +474,7 @@ export default {
       const containerName = data?.spec?.template?.spec?.containers?.[0]?.name
       const pvcName = siteManagerData?.spec?.template?.spec?.volumes?.find(item => item?.persistentVolumeClaim?.claimName)?.name
       if (!annotations || !disabled || !containerName || !pvcName) return
-      annotations['sysbox/rootfs-rw-layer'] = JSON.stringify([{ name: containerName, volumeName: pvcName, path: `/www/server/${containerName}/system`, persistentSpecialMounts: true }])
+      annotations['sysbox/rootfs-rw-layer'] = JSON.stringify([{ name: containerName, volumeName: pvcName, path: `www/server/${containerName}/system`, persistentSpecialMounts: true }])
     },
     copy(app_name, version) {
       let name
