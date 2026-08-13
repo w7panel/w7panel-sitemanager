@@ -58,7 +58,6 @@ setting:
   nginx:
     vhost_dir: ${NGINX_VHOST_DIR-/usr/local/etc/nginx/sites-enabled}
     web_root_dir: ${NGINX_WEB_DIR-/tmp/www}
-  environment_attach_dir: /home/environment
   environment_server_dir: ${ENVIRONMENT_SERVER_ROOT}
   k8s:
     app_group: ${K8S_APP_GROUP-test}

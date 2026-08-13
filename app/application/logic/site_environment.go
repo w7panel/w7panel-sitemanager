@@ -5,11 +5,9 @@ import (
 	"path/filepath"
 	"time"
 
-	copy2 "github.com/otiai10/copy"
 	"github.com/patrickmn/go-cache"
 	"github.com/w7panel/w7panel-sitemanager/common/dao"
 	"github.com/w7panel/w7panel-sitemanager/common/entity"
-	"github.com/w7panel/w7panel-sitemanager/common/helper"
 	zpkmarket "github.com/w7panel/w7panel-sitemanager/common/service/zpk-market"
 	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 )
@@ -26,10 +24,6 @@ func (l SiteEnvironment) GetEnvironmentById(id int32) *entity.Environment {
 	return siteEnvironment
 }
 
-func (l SiteEnvironment) InstallSiteEnvironment(siteEnvironment entity.Environment) error {
-	return l.installSiteEnvironmentTools(siteEnvironment)
-}
-
 func (l SiteEnvironment) UninstallSiteEnvironment(siteEnvironment entity.Environment) {
 	rootDir := l.getSiteEnvironmentServerDir(siteEnvironment)
 	os.RemoveAll(rootDir)
@@ -42,29 +36,9 @@ func (l SiteEnvironment) UninstallSiteEnvironment(siteEnvironment entity.Environ
 
 }
 
-func (l SiteEnvironment) installSiteEnvironmentTools(siteEnvironment entity.Environment) error {
-	curEnvironmentToolsAttachDir := l.getSiteEnvironmentLocalToolsDir(siteEnvironment)
-	environmentToolsDir := SiteEnvironment{}.getSiteEnvironmentServerToolsDir(siteEnvironment)
-	err := copy2.Copy(curEnvironmentToolsAttachDir, environmentToolsDir)
-	return err
-}
-
 func (l SiteEnvironment) getSiteEnvironmentServerDir(siteEnvironment entity.Environment) string {
 	serverDir := facade.GetConfig().GetString("setting.environment_server_dir")
 	return filepath.Join(serverDir, siteEnvironment.AppName)
-}
-
-func (l SiteEnvironment) getSiteEnvironmentServerToolsDir(siteEnvironment entity.Environment) string {
-	toolsDir := filepath.Join(l.getSiteEnvironmentServerDir(siteEnvironment), "tools")
-	helper.CreateDirIfNotExist(toolsDir, os.ModePerm)
-	return toolsDir
-}
-
-func (l SiteEnvironment) getSiteEnvironmentLocalToolsDir(siteEnvironment entity.Environment) string {
-	attachDir := facade.GetConfig().GetString("setting.environment_attach_dir")
-	curEnvironmentToolsAttachDir := filepath.Join(attachDir, siteEnvironment.Language, "tools")
-	helper.CreateDirIfNotExist(curEnvironmentToolsAttachDir, os.ModePerm)
-	return curEnvironmentToolsAttachDir
 }
 
 func (l SiteEnvironment) GetSupportEnvironmentList() (*zpkmarket.ListResp, error) {

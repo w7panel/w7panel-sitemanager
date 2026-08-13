@@ -2,7 +2,6 @@ package controller
 
 import (
 	"errors"
-	"log/slog"
 
 	"github.com/gin-gonic/gin"
 	"github.com/w7panel/w7panel-sitemanager/app/application/logic"
@@ -42,11 +41,6 @@ func (c SiteEnvironment) Create(ctx *gin.Context) {
 	if err != nil {
 		c.JsonResponseWithServerError(ctx, err)
 		return
-	}
-
-	err = logic.SiteEnvironment{}.InstallSiteEnvironment(*newEnvironment)
-	if err != nil {
-		slog.ErrorContext(ctx, "install site environment error", "params", params, "err", err)
 	}
 
 	c.JsonResponseWithoutError(ctx, map[string]interface{}{
