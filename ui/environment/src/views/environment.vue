@@ -286,6 +286,7 @@ export default {
             buildLoading: false,
             silentBuildCallback: null,
             currentImageName: '',
+            skipImageBuild: false,
         }
     },
     async created() {
@@ -370,6 +371,11 @@ export default {
         },
         getYamlInfo() {
             return this.getContainerYaml().then(res => {
+                const podAnnotations = res.data.spec?.template?.metadata?.annotations || {}
+                const rootfsRwLayer = podAnnotations['sysbox/rootfs-rw-layer']
+                this.skipImageBuild = rootfsRwLayer !== undefined
+                    && rootfsRwLayer !== null
+                    && String(rootfsRwLayer).trim() !== ''
                 this.pushImageName = res.data.metadata.annotations['w7.cc/push-image-name']
                 this.customCommands = res.data.metadata.annotations['w7.cc/dockerfile_custom_commands'] || ''
                 this.customExtensions = res.data.metadata.annotations['w7.cc/custom_php_extensions'] ? JSON.parse(res.data.metadata.annotations['w7.cc/custom_php_extensions']) : []
@@ -529,11 +535,35 @@ export default {
         build(options = {}) {
             this.buildLoading = true
             this.silentBuildCallback = options.onComplete || null
+            const command = (this.customCommands ? "sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; " + this.customCommands + ';' : '') + (options.installCommand || '')
+            if (this.skipImageBuild) {
+                const execute = command.trim()
+                    ? panelAxios.exec(this.containerName, this.podName, command)
+                    : Promise.resolve()
+                return execute.then(() => {
+                    this.buildLoading = false
+                    if (this.isPHP) {
+                        this.editId++
+                    }
+                    this.$message.success('操作成功')
+                    if (this.silentBuildCallback) {
+                        this.silentBuildCallback(true)
+                        this.silentBuildCallback = null
+                    }
+                }).catch(() => {
+                    this.buildLoading = false
+                    this.$message.error('操作失败')
+                    if (this.silentBuildCallback) {
+                        this.silentBuildCallback(false)
+                        this.silentBuildCallback = null
+                    }
+                })
+            }
             const pushImageName = applyEnvironmentBuildImage('registry.local.w7.cc', this.imageName);
             this.pushImageName = pushImageName
             emitWujieEvent('buildContainerImage', {
                 podName: this.podName,
-                cmd: (this.customCommands ? "sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; " + this.customCommands + ';' : '') + (options.installCommand || ''),
+                cmd: command,
                 containerName: this.containerName,
                 imageName: pushImageName,
                 updateImage: true
