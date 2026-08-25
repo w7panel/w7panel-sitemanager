@@ -1,7 +1,9 @@
 package command
 
 import (
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 
@@ -12,16 +14,16 @@ import (
 )
 
 type appCommandArgs struct {
-	AppName             string
-	EnvironmentTitle    string
-	EnvironmentName     string
-	EnvironmentVersion  string
-	EnvironmentLanguage string
-	Domain              string
-	K8sAppName          string
-	K8sEnvAppName       string
-	NginxVhostTemplate  string
-	Token               string
+	AppName                  string
+	EnvironmentTitle         string
+	EnvironmentVersion       string
+	EnvironmentLanguage      string
+	Domain                   string
+	K8sAppName               string
+	K8sEnvAppName            string
+	NginxVhostTemplate       string
+	NginxVhostTemplateBase64 string
+	Token                    string
 }
 
 var argsValue appCommandArgs
@@ -37,13 +39,12 @@ func (c SiteCreate) GetName() string {
 func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.AppName, "app_name", "", "app name")
 	cmd.Flags().StringVar(&argsValue.EnvironmentTitle, "title", "", "environment title")
-	cmd.Flags().StringVar(&argsValue.EnvironmentName, "name", "", "environment name")
 	cmd.Flags().StringVar(&argsValue.EnvironmentLanguage, "language", "", "environment language")
 	cmd.Flags().StringVar(&argsValue.EnvironmentVersion, "version", "", "environment version")
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
 	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
 	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
-	cmd.Flags().StringVar(&argsValue.NginxVhostTemplate, "nginx-vhost-template", "", "nginx vhost template")
+	cmd.Flags().StringVar(&argsValue.NginxVhostTemplateBase64, "nginx-vhost-template-base64", "", "base64-encoded nginx vhost template")
 	cmd.Flags().StringVar(&argsValue.Token, "token", "", "W7Panel access token used to log in to site manager")
 }
 
@@ -58,6 +59,11 @@ func (c SiteCreate) Handle(cmd *cobra.Command, args []string) {
 }
 
 func createSite(argsValue appCommandArgs) error {
+	var err error
+	argsValue, err = normalizeCreateSiteArgs(argsValue)
+	if err != nil {
+		return err
+	}
 	slog.Info("create_site", "app_name", argsValue.AppName, "domain", argsValue.Domain)
 
 	siteManagerService, err := getSiteManagerService(argsValue.Token)
@@ -122,6 +128,18 @@ func createSite(argsValue appCommandArgs) error {
 	return nil
 }
 
+func normalizeCreateSiteArgs(argsValue appCommandArgs) (appCommandArgs, error) {
+	if argsValue.NginxVhostTemplateBase64 == "" {
+		return argsValue, errors.New("nginx-vhost-template-base64 is required")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(argsValue.NginxVhostTemplateBase64)
+	if err != nil {
+		return argsValue, fmt.Errorf("decode nginx-vhost-template-base64: %w", err)
+	}
+	argsValue.NginxVhostTemplate = string(decoded)
+	return argsValue, nil
+}
+
 func buildSiteExt(argsValue appCommandArgs) accessor.SiteExt {
 	return accessor.SiteExt{
 		AppIdentify: argsValue.AppName,
@@ -173,5 +191,5 @@ func isSameSiteEnvironment(environment site_manager.SiteEnvironmentResp, argsVal
 }
 
 func getDesiredEnvironmentGroup(argsValue appCommandArgs) string {
-	return strings.ReplaceAll(argsValue.EnvironmentName, "_", "-")
+	return strings.ReplaceAll(argsValue.AppName, "_", "-")
 }
