@@ -91,12 +91,13 @@ func (c Site) Create(ctx *gin.Context) {
 
 func (c Site) Update(ctx *gin.Context) {
 	type ParamsValidate struct {
-		Id              int      `json:"id" binding:"required"`
-		Domain          []string `json:"domain" binding:"required"`
-		RootDir         string   `json:"root_dir" binding:"required"`
-		Remark          string   `json:"remark"`
-		EnvironmentId   int      `json:"environment_id" binding:"required"`
-		CodeDownloadUrl string   `json:"code_download_url"`
+		Id              int               `json:"id" binding:"required"`
+		Domain          []string          `json:"domain" binding:"required"`
+		RootDir         string            `json:"root_dir" binding:"required"`
+		Remark          string            `json:"remark"`
+		EnvironmentId   int               `json:"environment_id" binding:"required"`
+		CodeDownloadUrl string            `json:"code_download_url"`
+		Ext             *accessor.SiteExt `json:"ext"`
 	}
 	params := ParamsValidate{}
 	if !c.Validate(ctx, &params) {
@@ -126,6 +127,9 @@ func (c Site) Update(ctx *gin.Context) {
 		updatedSite.RootDir = params.RootDir
 		updatedSite.Remark = params.Remark
 		updatedSite.EnvironmentID = setEnvironment.ID
+		if params.Ext != nil {
+			updatedSite.Ext = *params.Ext
+		}
 
 		_, err := tx.Site.Where(tx.Site.ID.Eq(curSite.ID)).Updates(entity.Site{
 			Domain:        domain,
@@ -134,6 +138,11 @@ func (c Site) Update(ctx *gin.Context) {
 		})
 		if err != nil {
 			return err
+		}
+		if params.Ext != nil {
+			if _, err = tx.Site.Where(tx.Site.ID.Eq(curSite.ID)).Update(tx.Site.Ext, *params.Ext); err != nil {
+				return err
+			}
 		}
 
 		//remark 零值问题， 只能这样来更新

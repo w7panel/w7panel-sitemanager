@@ -118,12 +118,13 @@ type CreateSiteReq struct {
 }
 
 type UpdateSiteReq struct {
-	Id              int      `json:"id" binding:"required"`
-	Domain          []string `json:"domain" binding:"required"`
-	RootDir         string   `json:"root_dir" binding:"required"`
-	Remark          string   `json:"remark"`
-	EnvironmentId   int      `json:"environment_id" binding:"required"`
-	CodeDownloadUrl string   `json:"code_download_url"`
+	Id              int               `json:"id" binding:"required"`
+	Domain          []string          `json:"domain" binding:"required"`
+	RootDir         string            `json:"root_dir" binding:"required"`
+	Remark          string            `json:"remark"`
+	EnvironmentId   int               `json:"environment_id" binding:"required"`
+	CodeDownloadUrl string            `json:"code_download_url"`
+	Ext             *accessor.SiteExt `json:"ext,omitempty"`
 }
 
 type SiteInfoReq struct {

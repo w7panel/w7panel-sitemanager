@@ -3,13 +3,11 @@ package command
 import (
 	"errors"
 	"log/slog"
-	"net/url"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/w7panel/w7panel-sitemanager/common/accessor"
 	"github.com/w7panel/w7panel-sitemanager/common/service/site_manager"
-	"github.com/w7panel/w7panel-sitemanager/common/service/zpk"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/console"
 )
 
@@ -19,12 +17,10 @@ type appCommandArgs struct {
 	EnvironmentName     string
 	EnvironmentVersion  string
 	EnvironmentLanguage string
-	CodeDownloadUrl     string
 	Domain              string
 	K8sAppName          string
 	K8sEnvAppName       string
 	NginxVhostTemplate  string
-	EnableSsl           bool
 	Token               string
 }
 
@@ -44,12 +40,10 @@ func (c SiteCreate) Configure(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&argsValue.EnvironmentName, "name", "", "environment name")
 	cmd.Flags().StringVar(&argsValue.EnvironmentLanguage, "language", "", "environment language")
 	cmd.Flags().StringVar(&argsValue.EnvironmentVersion, "version", "", "environment version")
-	cmd.Flags().StringVar(&argsValue.CodeDownloadUrl, "code-download-url", "", "code download url")
 	cmd.Flags().StringVar(&argsValue.Domain, "domain", "", "site domain")
 	cmd.Flags().StringVar(&argsValue.K8sAppName, "k8s-app-name", "", "k8s app name")
 	cmd.Flags().StringVar(&argsValue.K8sEnvAppName, "k8s-env-app-name", "", "k8s env app name")
 	cmd.Flags().StringVar(&argsValue.NginxVhostTemplate, "nginx-vhost-template", "", "nginx vhost template")
-	cmd.Flags().BoolVar(&argsValue.EnableSsl, "ssl", false, "enable ssl")
 	cmd.Flags().StringVar(&argsValue.Token, "token", "", "W7Panel access token used to log in to site manager")
 }
 
@@ -73,6 +67,12 @@ func createSite(argsValue appCommandArgs) error {
 	if argsValue.K8sEnvAppName == "" {
 		return errors.New("k8s-env-app-name is required")
 	}
+	if argsValue.AppName == "" {
+		return errors.New("app_name is required")
+	}
+	if argsValue.K8sAppName == "" {
+		return errors.New("k8s-app-name is required")
+	}
 
 	siteInfo, _ := siteManagerService.InfoSite(site_manager.SiteInfoReq{
 		Domain: argsValue.Domain,
@@ -81,26 +81,16 @@ func createSite(argsValue appCommandArgs) error {
 	if err != nil {
 		return err
 	}
-
-	urlInfo, err := url.Parse(argsValue.CodeDownloadUrl)
-	if err != nil {
-		return err
-	}
-	//触发 info 接口， 才能从 downloadurl 下载文件
-	zpkService := zpk.ZpkService{
-		BaseUrl: urlInfo.Scheme + "://" + urlInfo.Host,
-	}
-	zpkInfo, err := zpkService.GetZpkInfo(argsValue.AppName)
-	slog.Info("get zpk info", "info", zpkInfo, "err", err, "name", argsValue.AppName)
+	siteExt := buildSiteExt(argsValue)
 
 	if siteInfo != nil {
 		err := siteManagerService.UpdateSite(site_manager.UpdateSiteReq{
-			Id:              siteInfo.Site.Id,
-			Domain:          strings.Split(siteInfo.Site.Domain, ","),
-			RootDir:         siteInfo.Site.RootDir,
-			Remark:          siteInfo.Site.Remark,
-			EnvironmentId:   environmentId,
-			CodeDownloadUrl: argsValue.CodeDownloadUrl,
+			Id:            siteInfo.Site.Id,
+			Domain:        strings.Split(siteInfo.Site.Domain, ","),
+			RootDir:       siteInfo.Site.RootDir,
+			Remark:        siteInfo.Site.Remark,
+			EnvironmentId: environmentId,
+			Ext:           &siteExt,
 		})
 		if err != nil {
 			if createdEnvironment {
@@ -113,14 +103,10 @@ func createSite(argsValue appCommandArgs) error {
 		slog.Info("站点已存在，更新站点环境成功", "domain", argsValue.Domain, "environment_id", environmentId)
 	} else {
 		err := siteManagerService.CreateSite(site_manager.CreateSiteReq{
-			Domain:          []string{argsValue.Domain},
-			RootDir:         argsValue.Domain,
-			EnvironmentId:   environmentId,
-			CodeDownloadUrl: argsValue.CodeDownloadUrl,
-			Ext: accessor.SiteExt{
-				AppIdentify: argsValue.AppName,
-				K8sAppName:  argsValue.K8sAppName,
-			},
+			Domain:        []string{argsValue.Domain},
+			RootDir:       argsValue.Domain,
+			EnvironmentId: environmentId,
+			Ext:           siteExt,
 		})
 		if err != nil {
 			if createdEnvironment {
@@ -134,6 +120,13 @@ func createSite(argsValue appCommandArgs) error {
 
 	slog.Info("站点安装成功", "app_name", argsValue.AppName, "domain", argsValue.Domain)
 	return nil
+}
+
+func buildSiteExt(argsValue appCommandArgs) accessor.SiteExt {
+	return accessor.SiteExt{
+		AppIdentify: argsValue.AppName,
+		K8sAppName:  argsValue.K8sAppName,
+	}
 }
 
 func resolveEnvironmentId(siteManagerService site_manager.SiteManagerService, siteInfo *site_manager.SiteInfoResp, argsValue appCommandArgs) (int, bool, error) {
