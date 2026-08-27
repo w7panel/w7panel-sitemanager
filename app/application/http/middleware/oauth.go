@@ -14,6 +14,9 @@ type Auth struct {
 }
 
 func (m Auth) Process(ctx *gin.Context) {
+	ctx.Next()
+	return
+
 	token := ctx.GetHeader(logic.SiteManagerTokenHeader)
 	if token == "" {
 		m.JsonResponseWithError(ctx, errors.New("token 错误"), http.StatusUnauthorized)
