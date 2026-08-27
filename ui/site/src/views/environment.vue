@@ -120,7 +120,7 @@
                 :class="createForm.name === item.name ? 'environment-type-item-active' : ''"
                 v-for="item in environmentList" :key="item.name" @click="getEnvironmentVersionList(item.name)">
                 <div class="environment-type-item-icon">
-                  <img style="width: 40px;height: 40px" :src="'http://zpk.w7.cc' + item.icon" alt="">
+                  <img style="width: 40px;height: 40px" :src="'https://img.w7.cc' + item.icon" alt="">
                 </div>
                 <div class="environment-type-item-name">
                   {{ item.name }}
