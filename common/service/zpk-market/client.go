@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -41,16 +42,27 @@ type Formula struct {
 	SupportVersion  string  `json:"support_version"`
 }
 
+func (f Formula) SupportVersions() []string {
+	versions := make([]string, 0)
+	for version := range strings.SplitSeq(f.SupportVersion, ",") {
+		if version = strings.TrimSpace(version); version != "" {
+			versions = append(versions, version)
+		}
+	}
+	return versions
+}
+
 // ZpkInfo is the compact ZPK representation consumed by site management.
 type ZpkInfo struct {
 	Name string `json:"name"`
 	// Identifier is the canonical Go field. Identifie keeps compatibility with
 	// the existing UI contract, which historically used this misspelling.
-	Identifier  string `json:"identify"`
-	Identifie   string `json:"identifie"`
-	Icon        string `json:"icon"`
-	Description string `json:"description"`
-	FormulaURL  string `json:"formula_url"`
+	Identifier     string   `json:"identify"`
+	Identifie      string   `json:"identifie"`
+	Icon           string   `json:"icon"`
+	Description    string   `json:"description"`
+	FormulaURL     string   `json:"formula_url"`
+	SupportVersion []string `json:"versions"`
 }
 
 type ListResp struct {

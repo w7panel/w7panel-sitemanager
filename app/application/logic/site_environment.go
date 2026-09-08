@@ -80,6 +80,7 @@ func (l SiteEnvironment) GetSupportEnvironmentList() (*zpkmarket.ListResp, error
 		for _, formula := range marketResp.List {
 			listResp.List = append(listResp.List, zpkmarket.ZpkInfo{
 				Name: formula.Name, Identifier: formula.Identify, Identifie: formula.Identify, Icon: formula.Icon, Description: formula.Description, FormulaURL: formula.FormulaURL,
+				SupportVersion: formula.SupportVersions(),
 			})
 		}
 		environmentListCache.Set("site_environment_list_cache", listResp, cache.DefaultExpiration)
