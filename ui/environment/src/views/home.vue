@@ -5,7 +5,7 @@
                 <el-icon><Setting /></el-icon>
             </div>
             <h1 id="guide-title">请在站点管理中配置环境</h1>
-            <p>进入站点管理 -> 环境管理，点击对应环境后的齿轮按钮，进行环境配置。</p>
+            <p>进入站点管理，编辑对应站点后点击“环境配置”。</p>
         </section>
     </main>
 </template>

@@ -4,25 +4,16 @@ module.exports = defineConfig({
   transpileDependencies: true,
   productionSourceMap: false,
   outputDir: 'dist',
-  lintOnSave: false,
-  publicPath: process.env.NODE_ENV === 'production' ? '' : '',
+  publicPath: process.env.NODE_ENV === 'production' ? '' : '/',
   devServer: {
     host: '0.0.0.0',
     port: 8080,
-
     allowedHosts: 'all',
-
-    historyApiFallback: {
-      index: '/index.html',
-      disableDotRule: true,
-    },
-
     client: {
-      overlay: false,
+      overlay: false
     },
-
     headers: {
-      'Access-Control-Allow-Origin': '*',
-    },
-  },
+      'Access-Control-Allow-Origin': '*'
+    }
+  }
 })

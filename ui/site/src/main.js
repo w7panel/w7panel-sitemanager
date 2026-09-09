@@ -6,7 +6,6 @@ import {
 	ElCheckbox,
 	ElConfigProvider,
 	ElDialog,
-	ElEmpty,
 	ElForm,
 	ElFormItem,
 	ElIcon,
@@ -19,11 +18,8 @@ import {
 	ElPopover,
 	ElPopconfirm,
 	ElSelect,
-	ElSwitch,
-	ElTabPane,
 	ElTable,
 	ElTableColumn,
-	ElTabs,
 	ElTag,
 	ElTooltip
 } from 'element-plus'
@@ -31,16 +27,13 @@ import './assets/css/element-plus.css'
 import './assets/css/style.css'
 import routes from './router'
 import {
-	Check,
 	CloseBold,
 	Delete,
 	Document,
-	Edit,
+	Loading,
 	Plus,
 	RefreshLeft,
 	Setting,
-	VideoPause,
-	VideoPlay,
 	WarningFilled
 } from '@element-plus/icons-vue'
 import './assets/css/global.less'
@@ -63,7 +56,6 @@ const elementComponents = [
 	ElCheckbox,
 	ElConfigProvider,
 	ElDialog,
-	ElEmpty,
 	ElForm,
 	ElFormItem,
 	ElIcon,
@@ -73,25 +65,19 @@ const elementComponents = [
 	ElPopover,
 	ElPopconfirm,
 	ElSelect,
-	ElSwitch,
-	ElTabPane,
 	ElTable,
 	ElTableColumn,
-	ElTabs,
 	ElTag,
 	ElTooltip
 ]
 const icons = {
-	Check,
 	CloseBold,
 	Delete,
 	Document,
-	Edit,
+	Loading,
 	Plus,
 	RefreshLeft,
 	Setting,
-	VideoPause,
-	VideoPlay,
 	WarningFilled
 }
 
