@@ -16,7 +16,7 @@
               </el-button>
               <div></div>
             </div>
-            <el-table :data="tableData" class="mt-20 table-header" v-loading="loading">
+            <el-table :data="tableData" class="mt-20 table-header">
               <el-table-column label="域名" prop="domain">
                 <template #default="scope">
                   <div v-if="scope.row?.domain">
@@ -53,29 +53,33 @@
               <el-table-column label="环境" prop="environment_name" width="120" />
               <el-table-column align="left" label="操作" width="300">
                 <template #default="scope">
-                  <el-button type="text" @click="edit(scope.row)">编辑</el-button>
-                  <el-button type="text" @click="shortcut(scope.row)">https配置</el-button>
-                  <el-button  v-if="scope.row.ext?.k8s_app_name" type="text" @click="appManage(scope.row.ext?.k8s_app_name)">应用管理</el-button>
-                  <el-popconfirm title="确认要删除站点吗？" icon="WarningFilled" confirm-button-type="danger"
-                    icon-color="#f53f3f" width="180" @confirm="del(scope.row)">
-                    <template #reference>
-                      <el-button type="text">删除</el-button>
-                    </template>
-                    <template #actions="{ confirm, cancel }">
-                      <div style="text-align: left;">
-                        <div>
-                          <el-checkbox checked disabled>删除站点配置</el-checkbox>
+                  <span v-if="scope.row.environment_status === 2" style="color: #999;">等待环境启动中...</span>
+                  <template v-else-if="scope.row.environment_status !== null">
+                    <el-button type="text" @click="edit(scope.row)">编辑</el-button>
+                    <el-button type="text" @click="shortcut(scope.row)">https配置</el-button>
+                    <el-button v-if="scope.row.ext?.k8s_app_name" type="text"
+                      @click="appManage(scope.row.ext?.k8s_app_name)">应用管理</el-button>
+                    <el-popconfirm title="确认要删除站点吗？" icon="WarningFilled" confirm-button-type="danger"
+                      icon-color="#f53f3f" width="180" @confirm="del(scope.row)">
+                      <template #reference>
+                        <el-button type="text">删除</el-button>
+                      </template>
+                      <template #actions="{ confirm, cancel }">
+                        <div style="text-align: left;">
+                          <div>
+                            <el-checkbox checked disabled>删除站点配置</el-checkbox>
+                          </div>
+                          <div>
+                            <el-checkbox v-model="deleteSiteConfig">删除站点文件</el-checkbox>
+                          </div>
                         </div>
-                        <div>
-                          <el-checkbox v-model="deleteSiteConfig">删除站点文件</el-checkbox>
-                        </div>
-                      </div>
-                      <el-button size="small" @click="deleteSiteConfig = false; cancel()">取消</el-button>
-                      <el-button type="primary" size="small" @click="confirm">
-                        确认
-                      </el-button>
-                    </template>
-                  </el-popconfirm>
+                        <el-button size="small" @click="deleteSiteConfig = false; cancel()">取消</el-button>
+                        <el-button type="primary" size="small" @click="confirm">
+                          确认
+                        </el-button>
+                      </template>
+                    </el-popconfirm>
+                  </template>
                 </template>
               </el-table-column>
             </el-table>
@@ -191,9 +195,7 @@
               <el-input v-model="form.remark" :rows="5" type="textarea" />
             </el-form-item>
             <el-form-item>
-              <el-button size="large" type="primary" @click="onSubmit" :loading="submitLoading">
-                {{ newEnvironmentStarting ? '环境创建中' : '确定' }}
-              </el-button>
+              <el-button size="large" type="primary" @click="onSubmit" :disabled="submitting">确定</el-button>
             </el-form-item>
           </el-form>
         </div>
@@ -247,9 +249,9 @@ export default {
   data() {
     return {
       deleteSiteConfig: false,
-      loading: true,
-      submitLoading: false,
-      newEnvironmentStarting: false,
+      submitting: false,
+      environmentStatusTimer: null,
+      siteListFetchVersion: 0,
       activeLang: { name: defaultLang },
       activeLangName: defaultLang,
       tab: 'base',
@@ -285,7 +287,58 @@ export default {
     this.getPanelDomainList()
     this.getDomainTips()
   },
+  beforeUnmount() {
+    this.siteListFetchVersion++
+    this.clearEnvironmentStatusTimer()
+  },
   methods: {
+    clearEnvironmentStatusTimer() {
+      if (this.environmentStatusTimer) {
+        clearTimeout(this.environmentStatusTimer)
+        this.environmentStatusTimer = null
+      }
+    },
+    checkEnvironmentStatus(data, fetchVersion) {
+      const environmentNames = [...new Set(data.map(item => item.environment_app_name).filter(Boolean))]
+      if (!environmentNames.length) {
+        this.tableData = data.map(item => ({ ...item, environment_status: 0 }))
+        return
+      }
+
+      Promise.all([
+        Promise.allSettled(environmentNames.map(name => {
+          return panelAxios.get('/apis/apps/v1/namespaces/default/deployments/' + name.replace(/_/g, '-'))
+        })),
+        Promise.allSettled(environmentNames.map(name => {
+          return getPods(name.replace(/_/g, '-'))
+        }))
+      ]).then(([deploymentRes, podRes]) => {
+        if (fetchVersion !== this.siteListFetchVersion) {
+          return
+        }
+
+        const environmentStatus = new Map(environmentNames.map((name, index) => {
+          const deployment = deploymentRes[index]?.status === 'fulfilled' ? deploymentRes[index].value?.data : null
+          const pods = podRes[index]?.status === 'fulfilled' ? podRes[index].value?.data?.items || [] : []
+          return [name, deployment ? getEnvironmentStatus(deployment, pods) : 0]
+        }))
+
+        this.tableData = data.map(item => ({
+          ...item,
+          environment_status: environmentStatus.get(item.environment_app_name) ?? 0
+        }))
+
+        if (![...environmentStatus.values()].includes(2)) {
+          this.environmentStatusTimer = null
+          return
+        }
+
+        this.environmentStatusTimer = setTimeout(() => {
+          this.environmentStatusTimer = null
+          this.checkEnvironmentStatus(this.tableData, fetchVersion)
+        }, 3000)
+      })
+    },
     appManage(appgroup) {
       window.open('/app/appgroup/' + appgroup + '/micro')
     },
@@ -597,7 +650,8 @@ export default {
       });
     },
     getData(p, notChangePage) {
-      this.loading = true
+      this.clearEnvironmentStatusTimer()
+      const fetchVersion = ++this.siteListFetchVersion
       if (!notChangePage) {
         this.page = p
       }
@@ -606,6 +660,9 @@ export default {
         page_size: this.paginate,
         group: this.activeLang?.group
       }).then(res => {
+        if (fetchVersion !== this.siteListFetchVersion) {
+          return
+        }
         let data = res.data?.data?.list ?? [];
         this.tableData = data.map(item => {
           item.domain = item.domain.map(domain => {
@@ -614,16 +671,14 @@ export default {
               isSSL: domain.startsWith('https://')
             }
           })
+          item.environment_status = null
           return item
         });
         this.last_page = Math.ceil(res.data.data.total / this.paginate);
-        this.loading = false
-      }).catch(() => {
-        this.loading = false
-      });
+        this.checkEnvironmentStatus(this.tableData, fetchVersion)
+      }).catch(() => undefined);
     },
     add() {
-      this.loading = false
       this.editId = ''
       this.tab = 'base'
       this.form.domain = [
@@ -639,8 +694,7 @@ export default {
       this.activeEnvironment = null
       this.form.remark = ''
       this.isNewEnv = false
-      this.submitLoading = false
-      this.newEnvironmentStarting = false
+      this.submitting = false
       this.nginxConfig = ''
       this.visible = true
       this.form.command = ['sh', '-c', '']
@@ -826,8 +880,11 @@ export default {
           return data
         }).then(data => {
           if (!data) { return }
-          panelAxios.post("/apis/apps/v1/namespaces/default/deployments", data)
-          resolve(name)
+          panelAxios.post("/apis/apps/v1/namespaces/default/deployments", data).then(() => {
+            resolve(name)
+          }).catch(() => {
+            resolve(false)
+          })
         }).catch(() => {
           resolve(false)
         })
@@ -879,37 +936,12 @@ export default {
         }
       })
     },
-    waitEnvironmentStarted(appName) {
-      const deploymentName = appName.replace(/_/g, '-')
-
-      return new Promise((resolve) => {
-        const checkStatus = () => {
-          Promise.allSettled([
-            panelAxios.get('/apis/apps/v1/namespaces/default/deployments/' + deploymentName),
-            getPods(deploymentName)
-          ]).then(([deploymentRes, podRes]) => {
-            const deployment = deploymentRes?.status === 'fulfilled' ? deploymentRes.value?.data : null
-            const pods = podRes?.status === 'fulfilled' ? podRes.value?.data?.items || [] : []
-
-            if (deployment && getEnvironmentStatus(deployment, pods) === 1) {
-              resolve()
-              return
-            }
-
-            setTimeout(checkStatus, 3000)
-          })
-        }
-
-        checkStatus()
-      })
-    },
     onSubmit() {
       this.$refs.form.validate(async (valid) => {
-        if (!valid) {
+        if (!valid || this.submitting) {
           return
         }
-        this.submitLoading = true
-        this.newEnvironmentStarting = !this.editId && this.isNewEnv
+        this.submitting = true
 
         try {
           let selectImage = this.images.find(item => item.id === this.form.environment_id)
@@ -961,7 +993,6 @@ export default {
               throw new Error('创建环境失败')
             }
             this.form.environment_id = selectImage.id
-            await this.waitEnvironmentStarted(selectImage.app_name)
           } else if (this.activeLang.share === false) {
             let imageInfo = await this.getAppConfig(selectImage.app_name)
             if (imageInfo?.spec?.template?.metadata?.annotations?.['w7.cc/image_used'] === 'true') {
@@ -988,8 +1019,7 @@ export default {
         } catch (error) {
           this.$message.error(error?.message || '操作失败')
         } finally {
-          this.submitLoading = false
-          this.newEnvironmentStarting = false
+          this.submitting = false
         }
       })
     },
@@ -1026,7 +1056,6 @@ export default {
       return name
     },
     async edit(row) {
-      this.loading = false
       this.editId = row.id
       this.tab = 'base'
       this.isNewEnv = false
