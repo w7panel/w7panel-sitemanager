@@ -11,7 +11,7 @@ jobs:
     permissions:
       contents: read
     env:
-      ZPK_HOST: zpk.w7.cc
+      ZPK_HOST: zpk.fan.b2.sz.w7.com
       ZPK_ARTIFACT: w7-traditiontool
     steps:
       - name: Checkout
