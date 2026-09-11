@@ -1,9 +1,10 @@
+{{- if and .Values.gatewayEnabled .Values.service.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:
-  name: "{{ include "site-manager.fullname" . }}-test-connection"
+  name: "{{ include "tradition-tool.fullname" . }}-test-connection"
   labels:
-    {{- include "site-manager.labels" . | nindent 4 }}
+    {{- include "tradition-tool.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
 spec:
@@ -11,5 +12,6 @@ spec:
     - name: wget
       image: busybox
       command: ['wget']
-      args: ['{{ include "site-manager.fullname" . }}:{{ .Values.service.port }}']
+      args: ['{{ include "tradition-tool.fullname" . }}:{{ .Values.service.port }}']
   restartPolicy: Never
+{{- end }}

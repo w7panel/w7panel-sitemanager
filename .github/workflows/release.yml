@@ -9,24 +9,15 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      packages: write
+      contents: read
     env:
       ZPK_HOST: zpk.w7.cc
-      ZPK_ARTIFACT: w7-sitemanager
-      IMAGE_PUSH_REGISTRY: ${{ vars.IMAGE_PUSH_REGISTRY || 'ghcr.io' }}
-      HELM_PACKAGE_IMAGE_REGISTRY: ${{ vars.HELM_PACKAGE_IMAGE_REGISTRY || 'ghcr.registry.cdn.w7.cc' }}
+      ZPK_ARTIFACT: w7-traditiontool
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
 
       - name: Setup Helm
         uses: azure/setup-helm@v4
@@ -36,53 +27,37 @@ jobs:
         with:
           node-version: 18.20.8
           cache: npm
-          cache-dependency-path: ui/site/package-lock.json
+          cache-dependency-path: ui/package-lock.json
 
       - name: Install build tools
-        run: sudo apt-get update && sudo apt-get install -y musl-tools zip
+        run: sudo apt-get update && sudo apt-get install -y zip
 
       - name: Build frontend
-        working-directory: ui/site
+        working-directory: ui
         run: |
-          npm install
+          npm ci
           npm run build
 
       - name: Package frontend
         run: |
           set -euo pipefail
 
-          if [ ! -d ui/site/dist ]; then
-            echo "frontend dist not found under ui/site/dist"
+          if [ ! -d ui/dist ]; then
+            echo "frontend dist not found under ui/dist"
             exit 1
           fi
 
-          cd ui/site/dist
-          zip -r ../../../frontend.zip .
+          cd ui/dist
+          zip -r ../../frontend.zip .
 
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.IMAGE_PUSH_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish image and Helm package
+      - name: Package Helm chart
         run: |
           set -euo pipefail
 
           RELEASE_TAG="${GITHUB_REF_NAME}"
           RELEASE_VERSION="${RELEASE_TAG#v}"
-          IMAGE_NAME="${GITHUB_REPOSITORY,,}"
-          IMAGE_REPOSITORY="${IMAGE_PUSH_REGISTRY}/${IMAGE_NAME}"
-          HELM_PACKAGE_IMAGE_REPOSITORY="${HELM_PACKAGE_IMAGE_REGISTRY}/${IMAGE_NAME}"
-
-          make publish \
-            IMAGE_REPOSITORY="${IMAGE_REPOSITORY}" \
-            IMAGE_TAG="${RELEASE_TAG}" \
-            HELM_PACKAGE_IMAGE_REPOSITORY="${HELM_PACKAGE_IMAGE_REPOSITORY}" \
-            HELM_PACKAGE_IMAGE_TAG="${RELEASE_TAG}" \
-            HELM_CHART_VERSION="${RELEASE_VERSION}" \
-            HELM_APP_VERSION="${RELEASE_TAG}"
+          make helm-lint
+          helm package charts --destination charts --version "${RELEASE_VERSION}" --app-version "${RELEASE_TAG}"
 
       - name: Push zpk
         env:
@@ -103,7 +78,7 @@ jobs:
             exit 1
           fi
 
-          HELM_PACKAGE="$(ls charts/site-manager-*.tgz | head -n 1)"
+          HELM_PACKAGE="$(ls charts/tradition-tool-*.tgz | head -n 1)"
           if [ -z "${HELM_PACKAGE}" ]; then
             echo "helm package not found under charts/"
             exit 1

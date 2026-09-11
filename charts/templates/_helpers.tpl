@@ -1,7 +1,7 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "site-manager.name" -}}
+{{- define "tradition-tool.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
@@ -10,7 +10,7 @@ Create a default fully qualified app name.
 We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
 If release name contains chart name it will be used as a full name.
 */}}
-{{- define "site-manager.fullname" -}}
+{{- define "tradition-tool.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -26,16 +26,16 @@ If release name contains chart name it will be used as a full name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "site-manager.chart" -}}
+{{- define "tradition-tool.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "site-manager.labels" -}}
-helm.sh/chart: {{ include "site-manager.chart" . }}
-{{ include "site-manager.selectorLabels" . }}
+{{- define "tradition-tool.labels" -}}
+helm.sh/chart: {{ include "tradition-tool.chart" . }}
+{{ include "tradition-tool.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -45,17 +45,17 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "site-manager.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "site-manager.name" . }}
+{{- define "tradition-tool.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "tradition-tool.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Create the name of the service account to use
 */}}
-{{- define "site-manager.serviceAccountName" -}}
+{{- define "tradition-tool.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
-{{- default (include "site-manager.fullname" .) .Values.serviceAccount.name }}
+{{- default (include "tradition-tool.fullname" .) .Values.serviceAccount.name }}
 {{- else }}
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}

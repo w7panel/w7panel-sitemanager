@@ -1,21 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "site-manager.fullname" . }}
+  name: {{ include "tradition-tool.fullname" . }}
   labels:
-    {{- include "site-manager.labels" . | nindent 4 }}
+    {{- include "tradition-tool.labels" . | nindent 4 }}
   annotations:
-    title: 站点管理
-    w7.cc.app/title: 站点管理
+    title: 传统应用工具
+    w7.cc.app/title: 传统应用工具
     w7.cc/create-svc: 'false'
-    w7.cc/need-build: ''
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "site-manager.selectorLabels" . | nindent 6 }}
+      {{- include "tradition-tool.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -23,107 +22,86 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "site-manager.selectorLabels" . | nindent 8 }}
-        w7.cc/identifie: {{ .Release.Name }}
+        {{- include "tradition-tool.selectorLabels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "site-manager.serviceAccountName" . }}
+      {{- $defaultAffinity := dict "podAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list (dict "labelSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" (include "tradition-tool.name" .) "app.kubernetes.io/instance" .Release.Name "w7.cc/identifie" .Release.Name)) "topologyKey" "kubernetes.io/hostname"))) }}
+      {{- $affinity := mergeOverwrite (deepCopy $defaultAffinity) (.Values.affinity | default dict) }}
+      serviceAccountName: {{ include "tradition-tool.serviceAccountName" . }}
+      runtimeClassName: sysbox-runc
+      hostUsers: false
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Chart.Name }}
+        - name: tradition-tool
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- if .Values.gatewayEnabled }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: [ "sh", "-c" ]
+          args:
+            - |
+              CONF_PATH="{{.Values.global.NGINX_DIR}}/conf.d"
+              NGINX_CONF="/etc/nginx/nginx.conf"
+              mkdir -p "$CONF_PATH"
+
+              DEFAULT_WORKER=2
+              HOST_CPU=$(grep -c '^processor' /proc/cpuinfo)
+              FINAL_WORKER=${NGINX_WORKER_PROCESSES:-$DEFAULT_WORKER}
+              [ "$FINAL_WORKER" -eq "$HOST_CPU" ] && FINAL_WORKER=$DEFAULT_WORKER
+              sed -i "s/\(worker_processes\).*;/\1 $FINAL_WORKER;/" "$NGINX_CONF"
+
+              grep -q "include $CONF_PATH/\*.conf;" "$NGINX_CONF" || \
+              sed -i "/include \/etc\/nginx\/conf.d\/\*.conf;/a\    include $CONF_PATH/*.conf;" "$NGINX_CONF"
+
+              nginx -g 'daemon off;'
           env:
-            - name: SQLITE_DIR
-              value: /home/site-manager/db/
-            - name: K8S_APP_GROUP
-              value: {{.Release.Name}}
-            - name: K8S_VOLUME_NAME
-              value: {{ .Release.Name }}-site-manager
-            - name: NGINX_VHOST_DIR
-              value: {{.Values.global.NGINX_VHOST_DIR}}
-            - name: NGINX_WEB_DIR
-              value: {{.Values.global.NGINX_WEB_DIR}}
-            - name: ENVIRONMENT_SERVER_ROOT
-              value: {{.Values.global.SERVER_DIR}}
-            {{- if .Values.global.oidc.enabled }}
-            - name: SYSTEM_OIDC_BASE_URL
-              value: {{ .Values.global.oidc.baseURL | quote }}
-            {{- end }}
-            {{- if .Values.webhook.enabled }}
-            - name: W7_SITE_MANAGER_SERVER_TLS_ENABLE
-              value: "true"
-            - name: W7_SITE_MANAGER_SERVER_TLS_PORT
-              value: {{ .Values.webhook.targetPort | quote }}
-            - name: W7_SITE_MANAGER_SERVER_TLS_CERT_FILE
-              value: /home/site-manager/webhook-certs/tls.crt
-            - name: W7_SITE_MANAGER_SERVER_TLS_KEY_FILE
-              value: /home/site-manager/webhook-certs/tls.key
-            - name: WEBHOOK_ENABLED
-              value: "true"
-            - name: WEBHOOK_REMOVE_SITE_ROOT_DIR
-              value: {{ .Values.webhook.removeSiteRootDir | quote }}
-            {{- end }}
+            - name: NGINX_WORKER_PROCESSES
+              valueFrom:
+                resourceFieldRef:
+                  resource: limits.cpu
+                  divisor: '1'
           volumeMounts:
-            - mountPath: /home/site-manager/db
-              name: site-storage
-              subPath: db
             - mountPath: {{.Values.global.NGINX_DIR}}
               name: site-storage
               subPath: nginx-dir
             - mountPath: {{.Values.global.NGINX_WEB_DIR}}
               name: site-storage
               subPath: nginx-web-dir
-            - mountPath: {{.Values.global.SERVER_DIR}}
-              name: site-storage
-              subPath: server-dir
-            {{- if .Values.webhook.enabled }}
-            - mountPath: /home/site-manager/webhook-certs
-              name: webhook-certs
-              readOnly: true
-            {{- end }}
           ports:
             - name: http
-              containerPort: 8000
+              containerPort: 80
               protocol: TCP
-            {{- if .Values.webhook.enabled }}
-            - name: webhook
-              containerPort: {{ .Values.webhook.targetPort }}
+            - name: https
+              containerPort: 443
               protocol: TCP
-            {{- end }}
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: http
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: http
+          {{- else }}
+          image: "{{ .Values.placeholderImage.repository }}:{{ .Values.placeholderImage.tag }}"
+          imagePullPolicy: {{ .Values.placeholderImage.pullPolicy | default "IfNotPresent" }}
+          volumeMounts:
+            - mountPath: {{ .Values.global.NGINX_DIR }}
+              name: site-storage
+              subPath: nginx-dir
+            - mountPath: {{ .Values.global.NGINX_WEB_DIR }}
+              name: site-storage
+              subPath: nginx-web-dir
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
         - name: site-storage
           persistentVolumeClaim:
-            claimName: {{ .Release.Name }}-site-manager
-        {{- if .Values.webhook.enabled }}
-        - name: webhook-certs
-          secret:
-            secretName: {{ include "site-manager.fullname" . }}-webhook-tls
-        {{- end }}
+            claimName: {{ .Values.PVC_NAME }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- toYaml $affinity | nindent 8 }}
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}

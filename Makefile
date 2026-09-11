@@ -1,90 +1,33 @@
-PROJECT_NAME=rangine
+PROJECT_NAME ?= w7-traditiontool
+UI_DIR ?= ui
+HELM_CHART_DIR ?= charts
+HELM_CHART := $(HELM_CHART_DIR)/Chart.yaml
+HELM_CHART_VERSION ?= $(shell awk '$$1=="version:" {print $$2; exit}' $(HELM_CHART))
+HELM_PACKAGE ?= $(HELM_CHART_DIR)/$(PROJECT_NAME)-$(HELM_CHART_VERSION).tgz
+FRONTEND_PACKAGE ?= frontend.zip
 
-GO_BASE=$(shell pwd)
-GO_BIN=$(GO_BASE)/bin
-LINUX_CC ?= x86_64-linux-musl-gcc
-LINUX_CXX ?= x86_64-linux-musl-g++
-CGO_CFLAGS ?= -D_LARGEFILE64_SOURCE
-HELM_CHART_DIR=charts
-HELM_VALUES_FILE := $(HELM_CHART_DIR)/values.yaml
-HELM_IMAGE_REPOSITORY := $(shell awk '/^image:/{flag=1; next} flag && /^[^[:space:]]/{flag=0} flag && $$1=="repository:" {print $$2; exit}' $(HELM_VALUES_FILE))
-HELM_IMAGE_TAG := $(shell awk '/^image:/{flag=1; next} flag && /^[^[:space:]]/{flag=0} flag && $$1=="tag:" {print $$2; exit}' $(HELM_VALUES_FILE))
-IMAGE_REPOSITORY ?= $(HELM_IMAGE_REPOSITORY)
-IMAGE_TAG ?= $(HELM_IMAGE_TAG)
-BETA_SUFFIX ?=
-BETA_IMAGE_TAG := $(IMAGE_TAG)-$(BETA_SUFFIX)
-HELM_CHART_VERSION ?= $(shell awk '$$1=="version:" {print $$2; exit}' $(HELM_CHART_DIR)/Chart.yaml)
-HELM_APP_VERSION ?= $(IMAGE_TAG)
-HELM_PACKAGE_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY)
-HELM_PACKAGE_IMAGE_TAG ?= $(IMAGE_TAG)
-HELM_PACKAGE ?= $(HELM_CHART_DIR)/site-manager-$(HELM_CHART_VERSION).tgz
-HELM_NGINX_PACKAGE ?= $(HELM_CHART_DIR)/charts/site-manager-nginx-$(HELM_CHART_VERSION).tgz
-
-SOURCE_FILES=*.go
-
-IMAGE_TARGET ?= $(IMAGE_REPOSITORY):$(IMAGE_TAG)
-
-.PHONY: tidy build build-windows makebuild dockerbuild helm-package publish beta dev test help
-
-tidy:
-	go mod tidy
-
-build:
-	CGO_ENABLED=1 GOARCH=amd64 GOOS=linux CC=$(LINUX_CC) CXX=$(LINUX_CXX) CGO_CFLAGS="$(CGO_CFLAGS)" go build -gcflags=-trimpath=$$GOPATH -asmflags=-trimpath=$$GOPATH -ldflags "-w -s" -o builder/server ${SOURCE_FILES}
-
-makebuild: tidy build
-
-dockerbuild:
-	docker build -t $(IMAGE_TARGET) .
-
-helm-package:
-	@test -n "$(HELM_PACKAGE_IMAGE_REPOSITORY)" || (echo "HELM_PACKAGE_IMAGE_REPOSITORY is empty. Pass HELM_PACKAGE_IMAGE_REPOSITORY=registry.example.com/ns/image."; exit 1)
-	@test -n "$(HELM_PACKAGE_IMAGE_TAG)" || (echo "HELM_PACKAGE_IMAGE_TAG is empty. Pass HELM_PACKAGE_IMAGE_TAG=vX.Y.Z."; exit 1)
-	@test -n "$(HELM_CHART_VERSION)" || (echo "HELM_CHART_VERSION is empty."; exit 1)
-	@test -n "$(HELM_APP_VERSION)" || (echo "HELM_APP_VERSION is empty."; exit 1)
-	@tmp_dir=$$(mktemp -d); \
-	cp $(HELM_CHART_DIR)/Chart.yaml $$tmp_dir/Chart.yaml; \
-	cp $(HELM_CHART_DIR)/values.yaml $$tmp_dir/values.yaml; \
-	cp $(HELM_CHART_DIR)/charts/nginx/Chart.yaml $$tmp_dir/nginx-Chart.yaml; \
-	test ! -f $(HELM_CHART_DIR)/Chart.lock || cp $(HELM_CHART_DIR)/Chart.lock $$tmp_dir/Chart.lock; \
-	test ! -f $(HELM_NGINX_PACKAGE) || cp $(HELM_NGINX_PACKAGE) $$tmp_dir/site-manager-nginx.tgz; \
-	restore() { \
-		cp $$tmp_dir/Chart.yaml $(HELM_CHART_DIR)/Chart.yaml; \
-		cp $$tmp_dir/values.yaml $(HELM_CHART_DIR)/values.yaml; \
-		cp $$tmp_dir/nginx-Chart.yaml $(HELM_CHART_DIR)/charts/nginx/Chart.yaml; \
-		if test -f $$tmp_dir/Chart.lock; then cp $$tmp_dir/Chart.lock $(HELM_CHART_DIR)/Chart.lock; else rm -f $(HELM_CHART_DIR)/Chart.lock; fi; \
-		if test -f $$tmp_dir/site-manager-nginx.tgz; then cp $$tmp_dir/site-manager-nginx.tgz $(HELM_NGINX_PACKAGE); else rm -f $(HELM_NGINX_PACKAGE); fi; \
-		rm -rf $$tmp_dir; \
-	}; \
-	trap restore EXIT; \
-	rm -f $(HELM_PACKAGE); \
-	perl -0pi -e 's/^version:\s*.*/version: $(HELM_CHART_VERSION)/m; s/^appVersion:\s*.*/appVersion: "$(HELM_APP_VERSION)"/m' $(HELM_CHART_DIR)/Chart.yaml; \
-	perl -0pi -e 's/(- name:\s*site-manager-nginx\s*\n\s*version:\s*).*/$${1}$(HELM_CHART_VERSION)/m' $(HELM_CHART_DIR)/Chart.yaml; \
-	perl -0pi -e 's/^version:\s*.*/version: $(HELM_CHART_VERSION)/m; s/^appVersion:\s*.*/appVersion: "$(HELM_APP_VERSION)"/m' $(HELM_CHART_DIR)/charts/nginx/Chart.yaml; \
-	perl -0pi -e 's#^(\s*repository:\s*).*#$${1}$(HELM_PACKAGE_IMAGE_REPOSITORY)#m' $(HELM_CHART_DIR)/values.yaml; \
-	perl -0pi -e 's/^(\s*tag:\s*).*/$${1}$(HELM_PACKAGE_IMAGE_TAG)/m' $(HELM_CHART_DIR)/values.yaml; \
-	helm dependency build --skip-refresh $(HELM_CHART_DIR); \
+.PHONY: ui-install ui-build frontend-package helm-lint helm-template helm-package package publish clean help
+ui-install:
+	cd $(UI_DIR) && npm ci
+ui-build: ui-install
+	cd $(UI_DIR) && npm run build
+frontend-package: ui-build
+	rm -f $(FRONTEND_PACKAGE)
+	cd $(UI_DIR)/dist && zip -rq ../../$(FRONTEND_PACKAGE) .
+helm-lint:
+	helm lint $(HELM_CHART_DIR)
+helm-template:
+	helm template $(PROJECT_NAME) $(HELM_CHART_DIR) --set PVC_NAME=example-pvc
+helm-package: helm-lint
+	rm -f $(HELM_PACKAGE)
 	helm package $(HELM_CHART_DIR) --destination $(HELM_CHART_DIR)
-
-publish: makebuild dockerbuild helm-package
-	@test -n "$(IMAGE_TAG)" || (echo "IMAGE_TAG is empty. Run from a git tag or pass IMAGE_TAG=vX.Y.Z."; exit 1)
-	docker push $(IMAGE_TARGET)
-
-beta:
-	@if [ -z "$(BETA_SUFFIX)" ]; then \
-		echo "BETA_SUFFIX is required, for example: make beta BETA_SUFFIX=beta1"; \
-		exit 1; \
-	fi
-	$(MAKE) publish IMAGE_TAG=$(BETA_IMAGE_TAG) HELM_APP_VERSION=$(BETA_IMAGE_TAG)
-
-dev:
-	go run ${SOURCE_FILES} server:start
-
-test:
-	go test -v ./tests/...
-
+package: frontend-package helm-package
+publish: package
+clean:
+	rm -rf $(UI_DIR)/dist $(FRONTEND_PACKAGE)
 help:
-	@echo "make - 编译 Go 代码, 生成二进制文件"
-	@echo "make dev - 在开发模式下编译 Go 代码"
-	@echo "make publish - 编译二进制、构建镜像、按 git tag 打镜像 tag，并打包 Helm"
-	@echo "make beta BETA_SUFFIX=beta1 - 使用当前镜像 tag 加手动后缀发布 beta，例如 $$(IMAGE_TAG)-beta1"
+	@echo "make ui-build          构建 UI"
+	@echo "make frontend-package  构建并打包 frontend.zip"
+	@echo "make helm-lint         校验 Helm Chart"
+	@echo "make helm-package      打包 Helm Chart"
+	@echo "make package           构建前端并打包 Helm"
