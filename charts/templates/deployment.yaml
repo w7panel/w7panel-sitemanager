@@ -28,8 +28,6 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- $defaultAffinity := dict "podAffinity" (dict "requiredDuringSchedulingIgnoredDuringExecution" (list (dict "labelSelector" (dict "matchLabels" (dict "app.kubernetes.io/name" (include "tradition-tool.name" .) "app.kubernetes.io/instance" .Release.Name "w7.cc/identifie" .Release.Name)) "topologyKey" "kubernetes.io/hostname"))) }}
-      {{- $affinity := mergeOverwrite (deepCopy $defaultAffinity) (.Values.affinity | default dict) }}
       serviceAccountName: {{ include "tradition-tool.serviceAccountName" . }}
       runtimeClassName: sysbox-runc
       hostUsers: false
@@ -100,8 +98,10 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.affinity }}
       affinity:
-        {{- toYaml $affinity | nindent 8 }}
+        {{- tpl (toYaml .) $ | nindent 8 }}
+      {{- end }}
       {{- with .Values.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}

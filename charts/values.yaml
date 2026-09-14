@@ -68,7 +68,13 @@ nodeSelector: {}
 
 tolerations: []
 
-affinity: {}
+# Workload Pod scheduling affinity.
+affinity:
+  podAffinity: {}
+
+# Job settings. Reserved for Job templates.
+job:
+  affinity: {}
 
 PVC_NAME: ""
 
