@@ -56,8 +56,9 @@ jobs:
 
           RELEASE_TAG="${GITHUB_REF_NAME}"
           RELEASE_VERSION="${RELEASE_TAG#v}"
-          make helm-lint
-          helm package charts --destination charts --version "${RELEASE_VERSION}" --app-version "${RELEASE_TAG}"
+          HELM_CHART_NAME="$(awk '$1 == "name:" { print $2; exit }' charts/Chart.yaml)"
+          make helm-package HELM_CHART_VERSION="${RELEASE_VERSION}" HELM_APP_VERSION="${RELEASE_TAG}"
+          echo "HELM_PACKAGE=charts/${HELM_CHART_NAME}-${RELEASE_VERSION}.tgz" >> "${GITHUB_ENV}"
 
       - name: Push zpk
         env:
@@ -78,9 +79,8 @@ jobs:
             exit 1
           fi
 
-          HELM_PACKAGE="$(ls charts/tradition-tool-*.tgz | head -n 1)"
-          if [ -z "${HELM_PACKAGE}" ]; then
-            echo "helm package not found under charts/"
+          if [ ! -f "${HELM_PACKAGE}" ]; then
+            echo "helm package not found: ${HELM_PACKAGE}"
             exit 1
           fi
 

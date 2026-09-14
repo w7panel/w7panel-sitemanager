@@ -1,9 +1,11 @@
-PROJECT_NAME ?= w7-traditiontool
 UI_DIR ?= ui
 HELM_CHART_DIR ?= charts
 HELM_CHART := $(HELM_CHART_DIR)/Chart.yaml
+HELM_CHART_NAME ?= $(shell awk '$$1=="name:" {print $$2; exit}' $(HELM_CHART))
 HELM_CHART_VERSION ?= $(shell awk '$$1=="version:" {print $$2; exit}' $(HELM_CHART))
-HELM_PACKAGE ?= $(HELM_CHART_DIR)/$(PROJECT_NAME)-$(HELM_CHART_VERSION).tgz
+HELM_APP_VERSION ?= $(shell awk '$$1=="appVersion:" {gsub(/"/, "", $$2); print $$2; exit}' $(HELM_CHART))
+PROJECT_NAME ?= $(HELM_CHART_NAME)
+HELM_PACKAGE ?= $(HELM_CHART_DIR)/$(HELM_CHART_NAME)-$(HELM_CHART_VERSION).tgz
 FRONTEND_PACKAGE ?= frontend.zip
 
 .PHONY: ui-install ui-build frontend-package helm-lint helm-template helm-package package publish clean help
@@ -20,7 +22,7 @@ helm-template:
 	helm template $(PROJECT_NAME) $(HELM_CHART_DIR) --set PVC_NAME=example-pvc
 helm-package: helm-lint
 	rm -f $(HELM_PACKAGE)
-	helm package $(HELM_CHART_DIR) --destination $(HELM_CHART_DIR)
+	helm package $(HELM_CHART_DIR) --destination $(HELM_CHART_DIR) --version "$(HELM_CHART_VERSION)" --app-version "$(HELM_APP_VERSION)"
 package: frontend-package helm-package
 publish: package
 clean:
