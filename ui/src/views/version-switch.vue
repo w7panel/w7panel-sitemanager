@@ -28,6 +28,8 @@ import panelAxios from '@/utils/panel'
 const IMAGE_TEMPLATE = 'w7.cc/image_template'
 const IMAGE_VERSIONS = 'w7.cc/image_version'
 const ROOTFS_ANNOTATION = 'sysbox/rootfs-rw-layer'
+const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
+const DEPLOYMENT_API = '/apis/apps/v1/namespaces/default/deployments'
 
 export default {
   name: 'VersionSwitch',
@@ -35,7 +37,9 @@ export default {
     return {
       loading: true,
       saving: false,
+      appGroup: null,
       deployment: null,
+      workloadName: '',
       imageTemplate: '',
       versions: [],
       selectedVersion: '',
@@ -43,34 +47,52 @@ export default {
     }
   },
   created() {
-    this.loadDeployment()
+    this.loadApplication()
   },
   methods: {
-    deploymentName() {
-      return window.$wujie?.props?.app_name || ''
+    appGroupName() {
+      return window.$wujie?.props?.group || ''
     },
-    async loadDeployment() {
-      const name = this.deploymentName()
-      if (!name) {
-        this.$message.error('未获取到应用 Deployment 名称')
+    findWorkloadName(appGroup) {
+      const appGroupName = appGroup?.metadata?.name || this.appGroupName()
+      return (appGroup?.status?.items || []).find(item =>
+        item?.kind === 'Deployment' && item?.name === appGroupName
+      )?.name || ''
+    },
+    currentVersionFromImage(image) {
+      const markerIndex = this.imageTemplate.indexOf('{version}')
+      if (markerIndex < 0) return ''
+      const prefix = this.imageTemplate.slice(0, markerIndex)
+      const suffix = this.imageTemplate.slice(markerIndex + '{version}'.length)
+      if (!image.startsWith(prefix) || !image.endsWith(suffix)) return ''
+      return image.slice(prefix.length, suffix ? -suffix.length : undefined)
+    },
+    async loadApplication() {
+      const appGroupName = this.appGroupName()
+      if (!appGroupName) {
+        this.$message.error('未获取到 AppGroup 名称')
         this.loading = false
         return
       }
       try {
-        const response = await panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${encodeURIComponent(name)}`)
-        this.deployment = response.data
-        const annotations = {
-          ...(this.deployment?.metadata?.annotations || {}),
-          ...(this.deployment?.spec?.template?.metadata?.annotations || {})
+        const appGroupResponse = await panelAxios.get(`${APPGROUP_API}/${encodeURIComponent(appGroupName)}`)
+        this.appGroup = appGroupResponse.data
+        this.workloadName = this.findWorkloadName(this.appGroup)
+        if (!this.workloadName) {
+          throw new Error(`AppGroup 中未找到同名 Deployment：${appGroupName}`)
         }
+
+        const annotations = this.appGroup?.metadata?.annotations || {}
         this.imageTemplate = String(annotations[IMAGE_TEMPLATE] || '').trim()
         this.versions = String(annotations[IMAGE_VERSIONS] || '')
           .split(/[|,\s]+/).map(item => item.trim()).filter(Boolean)
+        const deploymentResponse = await panelAxios.get(
+          `${DEPLOYMENT_API}/${encodeURIComponent(this.workloadName)}`
+        )
+        this.deployment = deploymentResponse.data
         const containers = this.deployment?.spec?.template?.spec?.containers || []
         this.currentImage = containers.find(item => !item.name?.includes('init'))?.image || containers[0]?.image || ''
-        const currentVersion = this.imageTemplate.includes('{version}')
-          ? this.currentImage.replace(this.imageTemplate.replace('{version}', ''), '').replace(/^[-:]/, '')
-          : ''
+        const currentVersion = this.currentVersionFromImage(this.currentImage)
         this.selectedVersion = this.versions.includes(currentVersion) ? currentVersion : this.versions[0] || ''
       } catch (error) {
         this.$message.error(error?.response?.data?.message || error?.message || '应用信息获取失败')
@@ -112,14 +134,15 @@ export default {
       }
     },
     async waitForRollout() {
-      const name = this.deploymentName()
       const generation = this.deployment?.metadata?.generation
       // Do not impose a fixed timeout: large images can take considerably
       // longer than a few minutes to pull. Keep polling until Kubernetes
       // reports the updated replicas are ready, so stale Sysbox data is never
       // removed while the new workload is still starting.
       while (true) {
-        const response = await panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${encodeURIComponent(name)}`)
+        const response = await panelAxios.get(
+          `${DEPLOYMENT_API}/${encodeURIComponent(this.workloadName)}`
+        )
         const deployment = response.data
         const status = deployment?.status || {}
         const ready = status.updatedReplicas >= (deployment?.spec?.replicas || 1)
@@ -164,7 +187,9 @@ export default {
     },
     applicationName() {
       return String(this.deployment?.metadata?.labels?.['w7.cc/identifie']
-        || window.$wujie?.props?.app_identifie || this.deploymentName())
+        || this.appGroup?.spec?.identifie
+        || this.appGroup?.metadata?.labels?.['w7.cc/identifie']
+        || this.workloadName)
         .replace(/[^A-Za-z0-9._-]+/g, '-')
     },
     async switchVersion() {
@@ -186,24 +211,33 @@ export default {
         const oldRootfsPaths = this.rootfsPaths(oldAnnotations)
         const existingContainers = podTemplate.spec?.containers || []
         const mainIndex = existingContainers.findIndex(container => !container.name?.includes('init'))
-        const containers = existingContainers.map((container, index) => ({
-          name: container.name,
-          ...(index === (mainIndex < 0 ? 0 : mainIndex)
-            ? { image: this.buildImage(this.selectedVersion) }
+        const mainContainer = existingContainers[mainIndex < 0 ? 0 : mainIndex]
+        if (!mainContainer?.name) throw new Error('未获取到应用容器名称')
+        const hasImageVersionEnv = (mainContainer.env || []).some(item => item?.name === 'IMAGE_VERSION')
+        const containers = [{
+          name: mainContainer.name,
+          image: this.buildImage(this.selectedVersion),
+          ...(hasImageVersionEnv
+            ? { env: [{ name: 'IMAGE_VERSION', value: this.selectedVersion }] }
             : {})
-        }))
+        }]
         const annotations = { ...(podTemplate.metadata?.annotations || {}) }
+        const appGroupRootfs = this.appGroup?.metadata?.annotations?.[ROOTFS_ANNOTATION]
+        if (appGroupRootfs !== undefined && appGroupRootfs !== null) {
+          annotations[ROOTFS_ANNOTATION] = appGroupRootfs
+        }
         this.updateRootfsPath(annotations, this.selectedVersion)
         const patchAnnotations = annotations
-        await panelAxios.patch(
-          `/apis/apps/v1/namespaces/default/deployments/${encodeURIComponent(this.deploymentName())}`,
+        const patchResponse = await panelAxios.patch(
+          `${DEPLOYMENT_API}/${encodeURIComponent(this.workloadName)}`,
           { spec: { template: { metadata: { annotations }, spec: { containers } } } },
           { headers: { 'Content-Type': 'application/strategic-merge-patch+json' } }
         )
+        this.deployment = patchResponse.data
         const updatedDeployment = await this.waitForRollout()
         await this.cleanupOldRootfs(oldRootfsPaths, patchAnnotations, updatedDeployment)
         this.$message.success('版本切换成功')
-        await this.loadDeployment()
+        await this.loadApplication()
       } catch (error) {
         this.$message.error(error?.response?.data?.message || error?.message || '版本切换失败')
       } finally {
