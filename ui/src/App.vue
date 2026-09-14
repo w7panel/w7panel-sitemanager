@@ -13,10 +13,10 @@ export default {
   name: 'App',
   components: { NginxConfig, VersionSwitch },
   data() {
-    return { route: window.location.hash === '#version' ? 'version' : 'nginx' }
+    return { route: window.location.hash === '#/version' ? 'version' : 'nginx' }
   },
   mounted() {
-    this.onHashChange = () => { this.route = window.location.hash === '#version' ? 'version' : 'nginx' }
+    this.onHashChange = () => { this.route = window.location.hash === '#/version' ? 'version' : 'nginx' }
     window.addEventListener('hashchange', this.onHashChange)
   },
   beforeUnmount() {
