@@ -60,3 +60,10 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Normalize gatewayEnabled so both boolean values and their string forms work.
+*/}}
+{{- define "tradition-tool.gatewayEnabled" -}}
+{{- eq (lower (toString .Values.gatewayEnabled)) "true" -}}
+{{- end }}

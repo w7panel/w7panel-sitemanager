@@ -1,7 +1,7 @@
 replicaCount: 1
 
-# Run the NGINX gateway sidecar. When disabled, the Deployment uses a pause
-# placeholder image and does not expose ports or a Service.
+# Run the NGINX gateway. When disabled, the Deployment uses a pause placeholder
+# image and does not expose ports. Service creation is controlled separately.
 gatewayEnabled: false
 
 image:

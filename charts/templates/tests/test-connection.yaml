@@ -1,4 +1,4 @@
-{{- if and .Values.gatewayEnabled .Values.service.enabled }}
+{{- if and (eq (include "tradition-tool.gatewayEnabled" .) "true") .Values.service.enabled }}
 apiVersion: v1
 kind: Pod
 metadata:

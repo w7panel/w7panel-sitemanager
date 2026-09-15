@@ -37,7 +37,7 @@ spec:
         - name: tradition-tool
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          {{- if .Values.gatewayEnabled }}
+          {{- if eq (include "tradition-tool.gatewayEnabled" .) "true" }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: [ "sh", "-c" ]
