@@ -52,8 +52,6 @@ body,
   margin: 0;
   font-size: 14px;
   color: #1d2129;
-  background: #f2f3f5;
   -webkit-font-smoothing: antialiased;
 }
-.app-shell { min-height: 100vh; }
 </style>
