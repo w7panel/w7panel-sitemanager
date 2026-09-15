@@ -9,18 +9,30 @@
 import NginxConfig from './views/nginx.vue'
 import VersionSwitch from './views/version-switch.vue'
 
+function resolveRoute(value) {
+  const path = String(value || '')
+    .trim()
+    .replace(/^#/, '')
+    .split('?')[0]
+    .replace(/\/+$/, '')
+  return path === '/version' ? 'version' : 'nginx'
+}
+
 export default {
   name: 'App',
   components: { NginxConfig, VersionSwitch },
   data() {
-    return { route: window.location.hash === '#/version' ? 'version' : 'nginx' }
+    return { route: resolveRoute(window.location.hash) }
   },
   mounted() {
-    this.onHashChange = () => { this.route = window.location.hash === '#/version' ? 'version' : 'nginx' }
+    this.onHashChange = () => { this.route = resolveRoute(window.location.hash) }
+    this.onWujieRouteChange = route => { this.route = resolveRoute(route) }
     window.addEventListener('hashchange', this.onHashChange)
+    window.$wujie?.bus?.$on('routeChange', this.onWujieRouteChange)
   },
   beforeUnmount() {
     window.removeEventListener('hashchange', this.onHashChange)
+    window.$wujie?.bus?.$off('routeChange', this.onWujieRouteChange)
   }
 }
 </script>
