@@ -16,10 +16,9 @@
 </template>
 
 <script>
-import { defineAsyncComponent } from 'vue'
+import Editor from '@/components/Editor.vue'
 import panelAxios from '@/utils/panel'
 
-const Editor = defineAsyncComponent(() => import('@/components/Editor.vue'))
 const NGINX_CONF_DIR = '/www/server/nginx/conf.d'
 const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
 const DEFAULT_DOMAIN_ANNOTATION = 'w7.cc/default-domain'
@@ -39,10 +38,10 @@ export default {
   },
   methods: {
     getAppgroupName() {
-      return window.$wujie?.props?.appgroup || ''
+      return window.$wujie?.props?.group || window.$wujie?.props?.appgroup || ''
     },
     getNginxDeploymentName() {
-      return window.$wujie?.props?.app_name || ''
+      return window.$wujie?.props?.app_name || window.$wujie?.props?.microappName || ''
     },
     async getNginxConfigFileName() {
       const appgroup = this.getAppgroupName()
@@ -83,19 +82,19 @@ export default {
         .join(',')
       if (!labelSelector) throw new Error('未获取到 Nginx Pod 选择器')
 
-      const podResponse = await panelAxios.get('/api/v1/namespaces/default/pods', {
-        params: { labelSelector }
-      })
-      const activePods = (podResponse.data?.items || [])
-        .filter(item => !item.metadata?.deletionTimestamp)
-      const pod = activePods.find(item => {
-        const status = item.status?.containerStatuses?.find(status => status.name === containerName)
-        return item.status?.phase === 'Running' && status?.ready
-      }) || activePods.find(item => item.status?.phase === 'Running')
-      const podName = pod?.metadata?.name
-      if (!podName) throw new Error('未获取到可用的 Nginx Pod')
-
-      return { podName, containerName }
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const podResponse = await panelAxios.get('/api/v1/namespaces/default/pods', {
+          params: { labelSelector }
+        })
+        const pod = (podResponse.data?.items || []).find(item => {
+          if (item.metadata?.deletionTimestamp || item.status?.phase !== 'Running') return false
+          const status = item.status?.containerStatuses?.find(status => status.name === containerName)
+          return status?.ready === true
+        })
+        if (pod?.metadata?.name) return { podName: pod.metadata.name, containerName }
+        if (attempt < 9) await new Promise(resolve => setTimeout(resolve, 1000))
+      }
+      throw new Error('未获取到 Ready 状态的 Nginx Pod')
     },
     getConfFileCommand(configFileName) {
       return `set -eu
@@ -148,12 +147,23 @@ trap - EXIT HUP INT TERM`
           this.getNginxContainer(),
           this.getNginxConfigFileName()
         ])
-        const response = await panelAxios.exec(
-          containerName,
-          podName,
-          `${this.getConfFileCommand(configFileName)}\ncat "$CONF_FILE"`
-        )
-        this.nginxConfig = response.data || ''
+        let lastError
+        for (let attempt = 0; attempt < 3; attempt += 1) {
+          try {
+            const response = await panelAxios.exec(
+              containerName,
+              podName,
+              `${this.getConfFileCommand(configFileName)}\ncat "$CONF_FILE"`
+            )
+            this.nginxConfig = String(response.data ?? '')
+            lastError = null
+            break
+          } catch (error) {
+            lastError = error
+            if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 1000))
+          }
+        }
+        if (lastError) throw lastError
       } catch (error) {
         this.$message.error(error?.response?.data?.error || error?.message || 'Nginx配置获取失败')
       } finally {
