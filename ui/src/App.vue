@@ -19,10 +19,15 @@ function resolveRoutePath(value) {
   return segments[segments.length - 1] === 'version' ? '/version' : '/nginx'
 }
 
+function getInitialRoute() {
+  const location = window.$wujie?.location || window.location
+  return location.hash || location.pathname || window.location.hash
+}
+
 export default {
   name: 'App',
   created() {
-    const initialRoute = resolveRoutePath(window.location.hash)
+    const initialRoute = resolveRoutePath(getInitialRoute())
     if (this.$route.path !== initialRoute) this.$router.replace(initialRoute)
     window.$wujie?.bus?.$on('routeChange', this.handleWujieRouteChange)
   },
