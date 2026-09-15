@@ -1,6 +1,7 @@
 import { createApp } from 'vue'
 import { ElButton, ElLoading, ElMessage } from 'element-plus'
 import App from './App.vue'
+import router from './router'
 import './assets/css/element-plus.css'
 
 if (window.__POWERED_BY_WUJIE__) {
@@ -11,6 +12,7 @@ let app = null
 
 function createNginxApp() {
   const nextApp = createApp(App)
+  nextApp.use(router)
   nextApp.use(ElButton)
   nextApp.use(ElLoading)
   nextApp.config.globalProperties.$message = ElMessage

@@ -1,15 +1,11 @@
 <template>
   <div class="app-shell">
-    <NginxConfig v-if="route === 'nginx'" />
-    <VersionSwitch v-else />
+    <router-view />
   </div>
 </template>
 
 <script>
-import NginxConfig from './views/nginx.vue'
-import VersionSwitch from './views/version-switch.vue'
-
-function resolveRoute(value) {
+function resolveRoutePath(value) {
   let path = String(value || '').trim()
   try {
     path = decodeURIComponent(path)
@@ -20,30 +16,24 @@ function resolveRoute(value) {
   if (hashIndex >= 0) path = path.slice(hashIndex + 1)
   path = path.split('?')[0].replace(/^\/+|\/+$/g, '')
   const segments = path.split('/').filter(Boolean)
-  return segments[segments.length - 1] === 'version' ? 'version' : 'nginx'
+  return segments[segments.length - 1] === 'version' ? '/version' : '/nginx'
 }
 
 export default {
   name: 'App',
-  components: { NginxConfig, VersionSwitch },
-  data() {
-    return {
-      route: resolveRoute(window.location.hash),
-      onHashChange: null,
-      onWujieRouteChange: null
-    }
-  },
   created() {
-    this.onWujieRouteChange = route => { this.route = resolveRoute(route) }
-    window.$wujie?.bus?.$on('routeChange', this.onWujieRouteChange)
-  },
-  mounted() {
-    this.onHashChange = () => { this.route = resolveRoute(window.location.hash) }
-    window.addEventListener('hashchange', this.onHashChange)
+    const initialRoute = resolveRoutePath(window.location.hash)
+    if (this.$route.path !== initialRoute) this.$router.replace(initialRoute)
+    window.$wujie?.bus?.$on('routeChange', this.handleWujieRouteChange)
   },
   beforeUnmount() {
-    window.removeEventListener('hashchange', this.onHashChange)
-    window.$wujie?.bus?.$off('routeChange', this.onWujieRouteChange)
+    window.$wujie?.bus?.$off('routeChange', this.handleWujieRouteChange)
+  },
+  methods: {
+    handleWujieRouteChange(route) {
+      const target = resolveRoutePath(route)
+      if (this.$route.path !== target) this.$router.push(target)
+    }
   }
 }
 </script>
