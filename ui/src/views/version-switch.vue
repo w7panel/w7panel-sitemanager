@@ -30,6 +30,9 @@ const IMAGE_VERSIONS = 'w7.cc/image_version'
 const ROOTFS_ANNOTATION = 'sysbox/rootfs-rw-layer'
 const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
 const DEPLOYMENT_API = '/apis/apps/v1/namespaces/default/deployments'
+const JOB_API = '/apis/batch/v1/namespaces/default/jobs'
+const CLEANUP_MOUNT_PATH = '/www/server'
+const CLEANUP_IMAGE = 'busybox:1.37.0'
 
 export default {
   name: 'VersionSwitch',
@@ -122,16 +125,23 @@ export default {
       }
       return annotations
     },
-    rootfsPaths(annotations) {
+    rootfsEntries(annotations) {
       try {
         const raw = annotations?.[ROOTFS_ANNOTATION]
         const entries = typeof raw === 'string' ? JSON.parse(raw) : raw
         return Array.isArray(entries)
-          ? entries.map(entry => String(entry?.path || '').trim()).filter(Boolean)
+          ? entries.map(entry => ({
+            ...entry,
+            path: String(entry?.path || '').trim(),
+            volumeName: String(entry?.volumeName || '').trim()
+          })).filter(entry => entry.path)
           : []
       } catch {
         return []
       }
+    },
+    rootfsPaths(annotations) {
+      return this.rootfsEntries(annotations).map(entry => entry.path)
     },
     async waitForRollout() {
       const generation = this.deployment?.metadata?.generation
@@ -153,37 +163,111 @@ export default {
         await new Promise(resolve => setTimeout(resolve, 3000))
       }
     },
-    async getReadyPod(deployment) {
-      const selector = Object.entries(deployment?.spec?.selector?.matchLabels || {})
-        .map(([key, value]) => `${key}=${value}`).join(',')
-      if (!selector) throw new Error('未获取到应用 Pod 选择器')
-      const response = await panelAxios.get('/api/v1/namespaces/default/pods', {
-        params: { labelSelector: selector }
-      })
-      const readyPods = (response.data?.items || []).filter(item => {
-        const statuses = item.status?.containerStatuses || []
-        return item.status?.phase === 'Running' && statuses.length > 0 && statuses.every(status => status.ready)
-      })
-      const pod = readyPods.sort((left, right) =>
-        String(right.metadata?.creationTimestamp || '').localeCompare(
-          String(left.metadata?.creationTimestamp || '')
-        )
-      )[0]
-      if (!pod?.metadata?.name) throw new Error('未获取到新版本 Pod')
-      const container = pod.spec?.containers?.find(item => !item.name?.includes('init')) || pod.spec?.containers?.[0]
-      return { podName: pod.metadata.name, containerName: container?.name }
+    cleanupJobGenerateName() {
+      const workload = String(this.workloadName || 'application')
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'application'
+      return `${`${workload}-rootfs-cleanup`.slice(0, 56).replace(/-+$/g, '')}-`
     },
-    async cleanupOldRootfs(oldPaths, newAnnotations, deployment) {
-      const newPaths = this.rootfsPaths(newAnnotations)
-      const stalePaths = oldPaths.filter(path => !newPaths.includes(path))
-        .filter(path => /^www\/server\/[A-Za-z0-9._-]+\/system$/.test(path))
-      if (!stalePaths.length) return
-      const { podName, containerName } = await this.getReadyPod(deployment)
-      if (!containerName) return
-      const command = stalePaths
-        .map(path => `rm -rf -- '/${path}'`)
-        .join('\n')
-      await panelAxios.exec(containerName, podName, `set -eu\n${command}`)
+    async waitForCleanupJob(jobName) {
+      while (true) {
+        const response = await panelAxios.get(`${JOB_API}/${encodeURIComponent(jobName)}`)
+        const status = response.data?.status || {}
+        if ((status.succeeded || 0) > 0) return
+        const failed = (status.conditions || []).find(condition =>
+          condition?.type === 'Failed' && condition?.status === 'True'
+        )
+        if (failed) throw new Error(failed.message || failed.reason || '旧版本目录清理 Job 执行失败')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+      }
+    },
+    async cleanupOldRootfs(oldEntries, newAnnotations, deployment) {
+      const newPaths = new Set(this.rootfsPaths(newAnnotations))
+      const staleEntries = oldEntries.filter(entry =>
+        !newPaths.has(entry.path)
+        && entry.volumeName
+        && /^www\/server\/[A-Za-z0-9._-]+\/system$/.test(entry.path)
+      )
+      if (!staleEntries.length) return
+
+      const entriesByVolume = new Map()
+      staleEntries.forEach(entry => {
+        const directory = entry.path.replace(/\/system$/, '')
+        const directories = entriesByVolume.get(entry.volumeName) || new Set()
+        directories.add(directory)
+        entriesByVolume.set(entry.volumeName, directories)
+      })
+
+      const podSpec = deployment?.spec?.template?.spec || {}
+      const deploymentVolumes = podSpec.volumes || []
+      const volumeNames = [...entriesByVolume.keys()]
+      const volumes = volumeNames.map(name => deploymentVolumes.find(volume => volume?.name === name))
+      const missingVolume = volumeNames.find((name, index) => !volumes[index])
+      if (missingVolume) throw new Error(`Deployment 中未找到 Sysbox 存储卷：${missingVolume}`)
+
+      const containers = volumeNames.map((volumeName, index) => ({
+        name: `cleanup-${index + 1}`,
+        image: CLEANUP_IMAGE,
+        imagePullPolicy: 'IfNotPresent',
+        command: ['sh', '-c'],
+        args: [[
+          'set -eu',
+          ...[...entriesByVolume.get(volumeName)]
+            .map(directory => `rm -rf -- '${CLEANUP_MOUNT_PATH}/${directory}'`)
+        ].join('\n')],
+        volumeMounts: [{ name: volumeName, mountPath: CLEANUP_MOUNT_PATH }]
+      }))
+
+      const cleanupPodSpec = {
+        restartPolicy: 'Never',
+        enableServiceLinks: false,
+        containers,
+        volumes
+      }
+      const inheritedPodSpecFields = [
+        'affinity',
+        'nodeSelector',
+        'tolerations',
+        'imagePullSecrets',
+        'serviceAccountName',
+        'schedulerName',
+        'priorityClassName'
+      ]
+      inheritedPodSpecFields.forEach(field => {
+        if (podSpec[field] !== undefined && podSpec[field] !== null) {
+          cleanupPodSpec[field] = podSpec[field]
+        }
+      })
+
+      const response = await panelAxios.post(JOB_API, {
+        apiVersion: 'batch/v1',
+        kind: 'Job',
+        metadata: {
+          generateName: this.cleanupJobGenerateName(),
+          labels: {
+            'w7.cc/group-name': this.appGroupName(),
+            'w7.cc/rootfs-cleanup': 'true'
+          }
+        },
+        spec: {
+          backoffLimit: 0,
+          activeDeadlineSeconds: 300,
+          ttlSecondsAfterFinished: 300,
+          template: {
+            metadata: {
+              labels: {
+                'w7.cc/group-name': this.appGroupName(),
+                'w7.cc/rootfs-cleanup': 'true'
+              }
+            },
+            spec: cleanupPodSpec
+          }
+        }
+      })
+      const jobName = response.data?.metadata?.name
+      if (!jobName) throw new Error('旧版本目录清理 Job 创建成功，但未返回 Job 名称')
+      await this.waitForCleanupJob(jobName)
     },
     applicationName() {
       return String(this.deployment?.metadata?.labels?.['w7.cc/identifie']
@@ -208,7 +292,7 @@ export default {
       try {
         const podTemplate = this.deployment.spec.template
         const oldAnnotations = { ...(podTemplate.metadata?.annotations || {}) }
-        const oldRootfsPaths = this.rootfsPaths(oldAnnotations)
+        const oldRootfsEntries = this.rootfsEntries(oldAnnotations)
         const existingContainers = podTemplate.spec?.containers || []
         const mainIndex = existingContainers.findIndex(container => !container.name?.includes('init'))
         const mainContainer = existingContainers[mainIndex < 0 ? 0 : mainIndex]
@@ -235,7 +319,7 @@ export default {
         )
         this.deployment = patchResponse.data
         const updatedDeployment = await this.waitForRollout()
-        await this.cleanupOldRootfs(oldRootfsPaths, patchAnnotations, updatedDeployment)
+        await this.cleanupOldRootfs(oldRootfsEntries, patchAnnotations, updatedDeployment)
         this.$message.success('版本切换成功')
         await this.loadApplication()
       } catch (error) {

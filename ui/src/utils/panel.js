@@ -14,6 +14,7 @@ panelAxios.interceptors.request.use(config => {
   config.headers.Authorization = `Bearer ${getPanelToken()}`
   if (
     config.url.includes('/apps/v1')
+    || config.url.includes('/apis/batch/v1')
     || config.url.includes('/apis/w7panel.w7.com')
     || config.url.includes('/api/v1')
   ) {
