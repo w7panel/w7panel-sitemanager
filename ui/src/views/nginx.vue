@@ -224,11 +224,8 @@ trap - EXIT HUP INT TERM`
 
 <style scoped>
 .nginx-page {
-  min-height: calc(100vh - 53px);
-  padding: 24px 28px 32px;
   box-sizing: border-box;
 }
-.page-card { background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); }
 .editor-card { overflow: hidden; }
 .card-header { padding: 22px 24px 16px; border-bottom: 1px solid #f2f3f5; }
 .card-header h1 { margin: 0; color: #1d2129; font-size: 18px; font-weight: 600; }
