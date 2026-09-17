@@ -6,7 +6,30 @@
         <p>选择应用版本，确认新版本启动正常后才会清理旧版本运行目录。</p>
       </header>
       <div class="card-body">
-        <div v-if="imageTemplate" class="info-row"><span>镜像模板</span><code>{{ imageTemplate }}</code></div>
+        <div class="info-list">
+          <div v-if="imageTemplate" class="info-row">
+            <span class="info-label">镜像模板</span>
+            <code>{{ imageTemplate }}</code>
+          </div>
+          <div v-if="currentImage" class="info-row">
+            <span class="info-label">当前镜像</span>
+            <code>{{ currentImage }}</code>
+          </div>
+          <div class="info-row">
+            <span class="info-label">系统盘存储路径</span>
+            <div v-if="systemDiskPaths.length" class="path-list">
+              <code v-for="path in systemDiskPaths" :key="path">{{ path }}</code>
+            </div>
+            <span v-else class="empty-value">未配置</span>
+          </div>
+        </div>
+        <div class="risk-warning" role="alert">
+          <span class="risk-warning-icon" aria-hidden="true">!</span>
+          <div>
+            <strong>请谨慎操作</strong>
+            <p>切换版本后系统盘数据会重置，请提前备份重要数据。</p>
+          </div>
+        </div>
         <div v-if="!versions.length" class="empty">当前应用没有配置可切换的版本。</div>
         <div v-else class="version-form">
           <label for="version">应用版本</label>
@@ -15,7 +38,6 @@
           </select>
           <el-button type="primary" :loading="saving" :disabled="!selectedVersion" @click="switchVersion">切换版本</el-button>
         </div>
-        <div v-if="currentImage" class="current">当前镜像：{{ currentImage }}</div>
       </div>
     </section>
   </main>
@@ -47,6 +69,16 @@ export default {
       versions: [],
       selectedVersion: '',
       currentImage: ''
+    }
+  },
+  computed: {
+    systemDiskPaths() {
+      const deploymentAnnotations = this.deployment?.spec?.template?.metadata?.annotations || {}
+      const deploymentPaths = this.rootfsPaths(deploymentAnnotations)
+      const paths = deploymentPaths.length
+        ? deploymentPaths
+        : this.rootfsPaths(this.appGroup?.metadata?.annotations || {})
+      return [...new Set(paths)]
     }
   },
   created() {
@@ -281,7 +313,7 @@ export default {
       const currentVersion = this.currentImage || '当前版本'
       try {
         await ElMessageBox.confirm(
-          `确认将应用切换到版本 ${this.selectedVersion} 吗？\n当前镜像：${currentVersion}`,
+          `切换后系统盘数据会重置，请谨慎操作。\n确认将应用切换到版本 ${this.selectedVersion} 吗？\n当前镜像：${currentVersion}`,
           '确认切换版本',
           { confirmButtonText: '确认切换', cancelButtonText: '取消', type: 'warning' }
         )
@@ -339,13 +371,26 @@ export default {
 .card-header h1 { margin: 0; color: #1d2129; font-size: 18px; font-weight: 600; }
 .card-header p { margin: 8px 0 0; color: #86909c; font-size: 13px; }
 .card-body { padding: 24px; }
-.info-row { display: flex; gap: 20px; align-items: center; color: #4e5969; }
-.info-row code { padding: 4px 8px; color: #1d2129; background: #f2f3f5; border-radius: 3px; word-break: break-all; }
-.empty { color: #86909c; }
+.info-list { display: grid; gap: 14px; }
+.info-row { display: flex; gap: 20px; align-items: flex-start; min-width: 0; color: #4e5969; }
+.info-label { flex: 0 0 112px; padding-top: 4px; }
+.info-row code { box-sizing: border-box; max-width: 100%; padding: 4px 8px; color: #1d2129; background: #f2f3f5; border-radius: 3px; word-break: break-all; }
+.path-list { display: flex; flex: 1; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.empty-value { padding-top: 4px; color: #86909c; }
+.risk-warning { display: flex; gap: 12px; margin-top: 22px; padding: 14px 16px; color: #7a4600; background: #fff7e8; border: 1px solid #ffcf8b; border-radius: 4px; }
+.risk-warning-icon { display: inline-flex; flex: 0 0 20px; align-items: center; justify-content: center; width: 20px; height: 20px; color: #fff; font-weight: 700; line-height: 1; background: #ff7d00; border-radius: 50%; }
+.risk-warning strong { display: block; line-height: 20px; }
+.risk-warning p { margin: 4px 0 0; line-height: 20px; }
+.empty { margin-top: 22px; color: #86909c; }
 .version-form { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
 .version-form label { color: #1d2129; font-weight: 500; }
 select { min-width: 220px; height: 36px; padding: 0 10px; color: #1d2129; background: #fff; border: 1px solid #c9cdd4; border-radius: 4px; outline: none; }
 select:focus { border-color: #165dff; box-shadow: 0 0 0 2px rgb(22 93 255 / 12%); }
 .version-form :deep(.el-button) { height: 36px; min-width: 112px; border-radius: 4px; --el-color-primary: #165dff; }
-.current { margin-top: 22px; padding-top: 16px; color: #86909c; border-top: 1px solid #f2f3f5; word-break: break-all; }
+@media (max-width: 640px) {
+  .info-row { flex-direction: column; gap: 6px; }
+  .info-label { flex-basis: auto; padding-top: 0; }
+  .version-form { align-items: stretch; flex-direction: column; }
+  select { width: 100%; min-width: 0; }
+}
 </style>
