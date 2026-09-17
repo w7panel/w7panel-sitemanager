@@ -23,7 +23,7 @@
             <span v-else class="empty-value">未配置</span>
           </div>
         </div>
-        <div class="risk-warning" role="alert">
+        <div v-if="systemDiskPaths.length" class="risk-warning" role="alert">
           <span class="risk-warning-icon" aria-hidden="true">!</span>
           <div>
             <strong>请谨慎操作</strong>
@@ -311,9 +311,12 @@ export default {
     async switchVersion() {
       if (!this.selectedVersion || !this.deployment) return
       const currentVersion = this.currentImage || '当前版本'
+      const resetWarning = this.systemDiskPaths.length
+        ? '切换后系统盘数据会重置，请谨慎操作。\n'
+        : ''
       try {
         await ElMessageBox.confirm(
-          `切换后系统盘数据会重置，请谨慎操作。\n确认将应用切换到版本 ${this.selectedVersion} 吗？\n当前镜像：${currentVersion}`,
+          `${resetWarning}确认将应用切换到版本 ${this.selectedVersion} 吗？\n当前镜像：${currentVersion}`,
           '确认切换版本',
           { confirmButtonText: '确认切换', cancelButtonText: '取消', type: 'warning' }
         )
