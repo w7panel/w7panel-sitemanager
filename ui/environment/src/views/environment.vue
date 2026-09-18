@@ -236,7 +236,7 @@ export default {
         return {
             loadStatusContent: {},
             loading: true,
-            version: '8.0',
+            version: '',
             containerName: '',
             podName: '',
             imageName: '',
@@ -295,16 +295,7 @@ export default {
             this.imageName = 'php:7.4-fpm-alpine-1769073749'
             this.version = '7.4'
         } else {
-            this.containerName = this.$route.params.containerName
-            let imageName = this.$route.params.imageName.replace(/W7IMAGENAMESLASH/g, "/").replace(/woyouyitouxiaomaolv/g, "/")
-            this.currentImageName = imageName
-
-            if (imageName.includes('registry.local.w7.cc')) {
-                imageName = imageName.replace('registry.local.w7.cc/', '')
-                imageName = imageName.replace(/-\d+$/, '')
-            }
-            this.imageName = imageName
-            this.version = this.$route.params.version
+            this.containerName = this.$route.query.groupName || this.$route.params.containerName
         }
 
         try {
@@ -355,10 +346,25 @@ export default {
                 this.extensionsDir = res.data.trim()
             })
         },
+        getImageVersion(imageName, imageTemplate) {
+            if (!imageName || !imageTemplate || !imageTemplate.includes('{version}')) {
+                return ''
+            }
+            const imageFileName = imageName.split('/').pop()
+            const templateFileName = imageTemplate.split('/').pop()
+            const escapeRegExp = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const versionPattern = templateFileName
+                .split('{version}')
+                .map(escapeRegExp)
+                .join('(.+?)')
+            return imageFileName.match(new RegExp(`^${versionPattern}$`))?.[1] || ''
+        },
         getAppYamlInfo() {
             return panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${this.appName}`).then(res => {
-                this.allExtensions = res.data.spec.template.metadata.annotations['w7.cc/php_extensions']
-                this.isPHP = res.data.spec.template.metadata.annotations['w7.cc/image_language'] === 'php'
+                const annotations = res.data.spec.template.metadata.annotations
+                this.version = this.getImageVersion(this.imageName, annotations['w7.cc/image_template'])
+                this.allExtensions = annotations['w7.cc/php_extensions']
+                this.isPHP = annotations['w7.cc/image_language'] === 'php'
                 this.tab = this.isPHP ? 'extensions' : 'custom_commands'
             })
         },
@@ -371,6 +377,13 @@ export default {
         },
         getYamlInfo() {
             return this.getContainerYaml().then(res => {
+                const currentImageName = this.getTargetContainerSpec(res.data)?.image || ''
+                this.currentImageName = currentImageName
+                this.imageName = currentImageName
+                if (this.imageName.includes('registry.local.w7.cc')) {
+                    this.imageName = this.imageName.replace('registry.local.w7.cc/', '')
+                    this.imageName = this.imageName.replace(/-\d+$/, '')
+                }
                 const podAnnotations = res.data.spec?.template?.metadata?.annotations || {}
                 const rootfsRwLayer = podAnnotations['sysbox/rootfs-rw-layer']
                 this.skipImageBuild = rootfsRwLayer !== undefined
