@@ -102,6 +102,8 @@ No custom start script is installed.
 
 The build copies `install-php-extensions` and `install-w7-php-extensions` only for the build step. Both files are removed after extension installation.
 
+PHP development headers, phpize build files, and PEAR metadata are retained so derived images can install additional bundled or PECL extensions.
+
 The Dockerfile does not run module verification during build.
 
 ## Manual Verification

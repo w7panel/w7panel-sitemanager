@@ -195,17 +195,12 @@ fi
 
 php -m
 
+# Keep the PHP headers, phpize build files, and PEAR metadata so images that
+# inherit from this one can still install bundled and PECL extensions.
 rm -rf \
   /root/.cache \
   /root/.composer \
   /tmp/* \
-  /usr/local/include/php \
-  /usr/local/lib/php/.channels \
-  /usr/local/lib/php/.filemap \
-  /usr/local/lib/php/.lock \
-  /usr/local/lib/php/.registry \
-  /usr/local/lib/php/PEAR \
-  /usr/local/lib/php/build \
   /usr/local/lib/php/doc \
   /usr/local/lib/php/test \
   /usr/local/php/man \

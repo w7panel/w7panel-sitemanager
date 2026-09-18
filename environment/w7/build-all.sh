@@ -39,10 +39,10 @@ for version in $VERSIONS; do
   docker build \
     --build-arg "PHP_VERSION=$version" \
     -f "$SCRIPT_DIR/Dockerfile" \
-    -t "$IMAGE_PREFIX:$version-fpm-alpine" \
+    -t "$IMAGE_PREFIX:$version-fpm-alpine-v2" \
     "$SCRIPT_DIR"
 
   if [ "$PUSH" = "1" ]; then
-    docker push "$IMAGE_PREFIX:$version-fpm-alpine"
+    docker push "$IMAGE_PREFIX:$version-fpm-alpine-v2"
   fi
 done
