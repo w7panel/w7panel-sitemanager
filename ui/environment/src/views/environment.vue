@@ -24,7 +24,7 @@
                             @addExtensions="addExtensions" @removeExtension="removeExtension"
                             v-show="tab === 'extensions'"
                             v-if="['extensions', 'custom_commands'].includes(tab) && extensionsDir"
-                            :extensionsDir="extensionsDir" :environment_id="editId" :name="containerName"
+                            :extensionsDir="extensionsDir" :environment_id="editId" :name="execContainerName"
                             :podsName="podName" :hostIP="hostIP" :containerId="containerId" :version="version"
                             :allExtensions="allExtensions" :customExtensions="customExtensions" />
                         <Editor v-else-if="tab === 'fpm'" :key="tab" v-model:content="content" language="ini" />
@@ -238,6 +238,7 @@ export default {
             loading: true,
             version: '',
             containerName: '',
+            execContainerName: '',
             podName: '',
             imageName: '',
             tab: 'custom_commands',
@@ -295,12 +296,12 @@ export default {
             this.imageName = 'php:7.4-fpm-alpine-1769073749'
             this.version = '7.4'
         } else {
-            this.containerName = this.$route.query.groupName || this.$route.params.containerName
+            this.containerName = window.$wujie?.props?.frontend_props?.environment_appgroup || this.$route.params.containerName
         }
 
         try {
-            await this.getYamlInfo()
-            await this.getAppYamlInfo()
+            const containerYaml = await this.getYamlInfo()
+            await this.getAppYamlInfo(containerYaml)
             const res = await this.getDefaultPod()
             const pod = this.findDefaultPod(res.data?.items || [])
             if (!pod) {
@@ -342,7 +343,7 @@ export default {
             }
         },
         getExtensionsDir() {
-            panelAxios.exec(this.containerName, this.podName, "php-config --extension-dir").then(res => {
+            panelAxios.exec(this.execContainerName, this.podName, "php-config --extension-dir").then(res => {
                 this.extensionsDir = res.data.trim()
             })
         },
@@ -359,9 +360,12 @@ export default {
                 .join('(.+?)')
             return imageFileName.match(new RegExp(`^${versionPattern}$`))?.[1] || ''
         },
-        getAppYamlInfo() {
-            return panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${this.appName}`).then(res => {
-                const annotations = res.data.spec.template.metadata.annotations
+        getAppYamlInfo(containerYaml) {
+            const appYamlPromise = containerYaml?.metadata?.name === this.appName
+                ? Promise.resolve(containerYaml)
+                : panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${this.appName}`).then(res => res.data)
+            return appYamlPromise.then(appYaml => {
+                const annotations = appYaml.spec.template.metadata.annotations
                 this.version = this.getImageVersion(this.imageName, annotations['w7.cc/image_template'])
                 this.allExtensions = annotations['w7.cc/php_extensions']
                 this.isPHP = annotations['w7.cc/image_language'] === 'php'
@@ -377,6 +381,11 @@ export default {
         },
         getYamlInfo() {
             return this.getContainerYaml().then(res => {
+                const deploymentLabels = res.data.metadata?.labels || {}
+                const podLabels = res.data.spec?.template?.metadata?.labels || {}
+                this.execContainerName = deploymentLabels['w7.cc/identifie']
+                    || podLabels['w7.cc/identifie']
+                    || this.containerName
                 const currentImageName = this.getTargetContainerSpec(res.data)?.image || ''
                 this.currentImageName = currentImageName
                 this.imageName = currentImageName
@@ -393,12 +402,13 @@ export default {
                 this.customCommands = res.data.metadata.annotations['w7.cc/dockerfile_custom_commands'] || ''
                 this.customExtensions = res.data.metadata.annotations['w7.cc/custom_php_extensions'] ? JSON.parse(res.data.metadata.annotations['w7.cc/custom_php_extensions']) : []
                 this.appName = res.data.metadata.annotations['w7.cc/group-name']
+                return res.data
             })
         },
         kill() {
             this.getDefaultPod().then(res => {
                 const items = res.data?.items || []
-                panelAxios.execall(this.containerName, items.map(item => item.metadata.name), "kill -USR2 1")
+                panelAxios.execall(this.execContainerName, items.map(item => item.metadata.name), "kill -USR2 1")
             })
         },
         getContainerYaml() {
@@ -458,7 +468,7 @@ export default {
             if (!force && this.fpmConfigContentLoaded) {
                 return Promise.resolve(this.fpmConfigContentCache)
             }
-            return panelAxios.exec(this.containerName, this.podName, 'cat /usr/local/etc/php-fpm.d/www.conf').then(res => {
+            return panelAxios.exec(this.execContainerName, this.podName, 'cat /usr/local/etc/php-fpm.d/www.conf').then(res => {
                 this.fpmConfigContentCache = res.data || ''
                 this.fpmConfigContentLoaded = true
                 return this.fpmConfigContentCache
@@ -471,7 +481,7 @@ export default {
         },
         loadPhpIniContent() {
             const command = 'if [ -s /usr/local/etc/php/php.ini ]; then cat /usr/local/etc/php/php.ini; else cat /usr/local/etc/php/php.ini-production; fi'
-            panelAxios.exec(this.containerName, this.podName, command).then(res => {
+            panelAxios.exec(this.execContainerName, this.podName, command).then(res => {
                 this.iniContent = res.data || ''
             })
         },
@@ -479,7 +489,7 @@ export default {
             const keys = this.iniSettingDefs.map(item => item.key)
             const keyLines = keys.map(key => `keys["${key}"]=1;`).join(' ')
             const command = `FILE=/usr/local/etc/php/php.ini; if [ ! -s "$FILE" ]; then FILE=/usr/local/etc/php/php.ini-production; fi; awk -F'=' 'BEGIN{${keyLines}} {line=$0; sub(/^[ \\t]+/, "", line); if (line ~ /^;/) {sub(/^;/, "", line)} split(line, parts, "="); key=parts[1]; gsub(/[ \\t]+$/, "", key); keyLower=tolower(key); if (keyLower in keys) { if (!(keyLower in found)) { value=line; sub(/^[^=]*=/, "", value); gsub(/^[ \\t]+|[ \\t]+$/, "", value); print keyLower "|" value; found[keyLower]=1 } } } END{for (k in keys) if (!(k in found)) print k "|"}' "$FILE"`
-            panelAxios.exec(this.containerName, this.podName, command).then(res => {
+            panelAxios.exec(this.execContainerName, this.podName, command).then(res => {
                 const parsed = this.parseIniOutput(res.data || '')
                 this.iniSettingDefs.forEach(item => {
                     if (parsed[item.key] !== undefined && parsed[item.key] !== '') {
@@ -490,7 +500,7 @@ export default {
         },
         loadDisableFunctions() {
             const command = `FILE=/usr/local/etc/php/php.ini; if [ ! -s "$FILE" ]; then FILE=/usr/local/etc/php/php.ini-production; fi; awk -F'=' '{line=$0; sub(/^[ \\t]+/, "", line); if (line ~ /^;/) {sub(/^;/, "", line)} split(line, parts, "="); key=parts[1]; gsub(/[ \\t]+$/, "", key); if (tolower(key) == "disable_functions") { value=line; sub(/^[^=]*=/, "", value); gsub(/^[ \\t]+|[ \\t]+$/, "", value); print value; exit } }' "$FILE"`
-            panelAxios.exec(this.containerName, this.podName, command).then(res => {
+            panelAxios.exec(this.execContainerName, this.podName, command).then(res => {
                 this.disableFunctions = res.data ? res.data.trim() : ''
             })
         },
@@ -511,7 +521,7 @@ export default {
             ]
             const keyLines = keys.map(key => `keys["${key}"]=1;`).join(' ')
             const command = `FILE=/usr/local/etc/php-fpm.d/www.conf; if [ ! -f "$FILE" ]; then exit 0; fi; awk -F'=' 'BEGIN{${keyLines}} {line=$0; sub(/^[ \\t]+/, "", line); commented=(line ~ /^;/); if (commented) {sub(/^;/, "", line)} split(line, parts, "="); key=parts[1]; gsub(/[ \\t]+$/, "", key); keyLower=tolower(key); if (keyLower in keys) { if (!(keyLower in found)) { value=line; sub(/^[^=]*=/, "", value); gsub(/^[ \\t]+|[ \\t]+$/, "", value); state=commented ? "commented" : "active"; print keyLower "|" state "|" value; found[keyLower]=1 } } } END{for (k in keys) if (!(k in found)) print k "|missing|"}' "$FILE"`
-            panelAxios.exec(this.containerName, this.podName, command).then(res => {
+            panelAxios.exec(this.execContainerName, this.podName, command).then(res => {
                 const parsed = this.parseFpmOutput(res.data || '')
 
                 const setValue = (key, targetKey, fallback) => {
@@ -551,7 +561,7 @@ export default {
             const command = (this.customCommands ? "sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; " + this.customCommands + ';' : '') + (options.installCommand || '')
             if (this.skipImageBuild) {
                 const execute = command.trim()
-                    ? panelAxios.exec(this.containerName, this.podName, command)
+                    ? panelAxios.exec(this.execContainerName, this.podName, command)
                     : Promise.resolve()
                 return execute.then(() => {
                     this.buildLoading = false
@@ -577,7 +587,7 @@ export default {
             emitWujieEvent('buildContainerImage', {
                 podName: this.podName,
                 cmd: command,
-                containerName: this.containerName,
+                containerName: this.execContainerName,
                 imageName: pushImageName,
                 updateImage: true
             }, () => {
@@ -597,13 +607,16 @@ export default {
         getDefaultPod() {
             return panelAxios.get("/api/v1/namespaces/default/pods?labelSelector=app=" + this.containerName)
         },
-        getTargetContainerSpec(pod) {
-            return pod?.spec?.containers?.find(item => item.name === this.containerName)
-                || pod?.spec?.containers?.[0]
+        getTargetContainerSpec(resource) {
+            const containers = resource?.spec?.template?.spec?.containers
+                || resource?.spec?.containers
+                || []
+            return containers.find(item => item.name === this.execContainerName)
+                || containers[0]
                 || null
         },
         getTargetContainerStatus(pod) {
-            return pod?.status?.containerStatuses?.find(item => item.name === this.containerName)
+            return pod?.status?.containerStatuses?.find(item => item.name === this.execContainerName)
                 || pod?.status?.containerStatuses?.[0]
                 || null
         },
@@ -723,7 +736,7 @@ export default {
         },
         executeFpmToggleCommand({ cmd, value, loadingKey, enabledKey, successText, failureText, reload }) {
             this[loadingKey] = true
-            return panelAxios.exec(this.containerName, this.podName, cmd).then(() => {
+            return panelAxios.exec(this.execContainerName, this.podName, cmd).then(() => {
                 this.$message.success(value ? successText.enabled : successText.disabled)
                 this.invalidateFpmConfigCache()
                 this.kill()
@@ -835,7 +848,7 @@ export default {
             this.getFpmConfigContent(force).then(fpmContent => {
                 this.loadStatusEnabled = this.checkConfigEnabled(fpmContent, 'pm.status_path')
 
-                panelAxios.exec(this.containerName, this.podName, String.raw`php -r '
+                panelAxios.exec(this.execContainerName, this.podName, String.raw`php -r '
             $host = "127.0.0.1";
             $port = 9000;
             $path = "/status";
@@ -930,7 +943,7 @@ export default {
                     this[options.contentKey] = options.emptyPathMessage
                     return null
                 }
-                return panelAxios.exec(this.containerName, this.podName, `tail -n ${this.logLines} ${logPath} 2>&1 || echo '${options.unreadableText}'`).then(logRes => {
+                return panelAxios.exec(this.execContainerName, this.podName, `tail -n ${this.logLines} ${logPath} 2>&1 || echo '${options.unreadableText}'`).then(logRes => {
                     this[options.contentKey] = options.formatContent
                         ? options.formatContent(logRes.data)
                         : (logRes.data || options.emptyContent)
@@ -983,7 +996,7 @@ export default {
             }, force)
         },
         executeSaveCommand(cmd, options = {}) {
-            return panelAxios.exec(this.containerName, this.podName, cmd).then(() => {
+            return panelAxios.exec(this.execContainerName, this.podName, cmd).then(() => {
                 this.$message.success('保存成功')
                 options.onSuccess?.()
                 this.kill()
