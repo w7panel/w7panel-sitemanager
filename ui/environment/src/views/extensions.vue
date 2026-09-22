@@ -20,11 +20,11 @@
                     <template v-if="scope.row.uninstall_command && scope.row.can_uninstall">
                         <el-button :loading="enableLoading === scope.row.name" type="success" link
                             @click="enableExtension(scope.row, 1)"
-                            v-if="!installLoading && scope.row.enable_command && !scope.row.is_enabled">启用</el-button>
+                            v-if="!operationLoading && scope.row.enable_command && !scope.row.is_enabled">启用</el-button>
                         <el-button :loading="enableLoading === scope.row.name" type="danger" link
                             @click="enableExtension(scope.row, 2)"
-                            v-if="!installLoading && scope.row.disable_command && scope.row.is_enabled">禁用</el-button>
-                        <el-button type="danger" link @click="installExtension(scope.row, 2)" :disabled="installLoading"
+                            v-if="!operationLoading && scope.row.disable_command && scope.row.is_enabled">禁用</el-button>
+                        <el-button type="danger" link @click="installExtension(scope.row, 2)" :disabled="operationLoading"
                             :loading="installLoading === scope.row.name">{{ installLoading === scope.row.name ?
                                 installLoadingText : '卸载' }}</el-button>
                     </template>
@@ -33,12 +33,13 @@
             </el-table-column>
         </el-table>
         <div class="df jc-c" style="margin-top: 20px">
+            <el-button v-if="showInstallLog" type="text" @click="$emit('viewInstallLog')">查看日志</el-button>
             <el-button type="primary" @click="installSelectedExtensions"
-                :disabled="!selectedInstallExtensions.length || !!installLoading"
-                :loading="installLoading && installType === 1 && selectedInstallExtensions.length > 1">
+                :disabled="!selectedInstallExtensions.length || operationLoading"
+                :loading="buildLoading || (installLoading && installType === 1 && selectedInstallExtensions.length > 1)">
                 批量安装
             </el-button>
-            <el-button type="primary" @click="openAddExtensionsDialog()">添加扩展</el-button>
+            <el-button type="primary" @click="openAddExtensionsDialog()" :disabled="operationLoading">添加扩展</el-button>
         </div>
 
         <el-dialog v-model="addExtensionsDialogVisible" title="添加扩展" width="50%" :close-on-click-modal="false">
@@ -119,6 +120,14 @@ export default {
         containerId: {
             type: String,
             default: ''
+        },
+        buildLoading: {
+            type: Boolean,
+            default: false
+        },
+        showInstallLog: {
+            type: Boolean,
+            default: false
         }
     },
     name: "extensions-list",
@@ -144,6 +153,9 @@ export default {
         }
     },
     computed: {
+        operationLoading() {
+            return !!this.installLoading || this.buildLoading
+        },
         selectedInstallExtensions() {
             return this.selectedExtensions.filter(item => this.isSelectableInstallExtension(item))
         },

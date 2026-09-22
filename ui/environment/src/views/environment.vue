@@ -22,11 +22,13 @@
                     <div style="flex: 1;padding-left: 20px;min-height: 490px;overflow: hidden;">
                         <Extensions ref="extensions" @silentBuild="silentBuildExtensions" @kill="kill"
                             @addExtensions="addExtensions" @removeExtension="removeExtension"
+                            @viewInstallLog="openInstallLog"
                             v-show="tab === 'extensions'"
                             v-if="['extensions', 'custom_commands'].includes(tab) && extensionsDir"
                             :extensionsDir="extensionsDir" :environment_id="editId" :name="execContainerName"
                             :podsName="podName" :hostIP="hostIP" :containerId="containerId" :version="version"
-                            :allExtensions="allExtensions" :customExtensions="customExtensions" />
+                            :allExtensions="allExtensions" :customExtensions="customExtensions"
+                            :buildLoading="installOperationLoading" :showInstallLog="showInstallLogButton" />
                         <Editor v-else-if="tab === 'fpm'" :key="tab" v-model:content="content" language="ini" />
                         <Editor v-else-if="tab === 'config_file'" :key="tab" v-model:content="iniContent"
                             language="ini" />
@@ -162,13 +164,26 @@
                     </div>
                 </div>
                 <div class="df jc-c" style="margin-top: 20px">
-                    <el-button type="primary" :loading="buildLoading" @click="saveCustomCommands"
-                        v-if="tab === 'custom_commands'">保存</el-button>
+                    <template v-if="tab === 'custom_commands'">
+                        <el-button v-if="showInstallLogButton" type="text" @click="openInstallLog">查看日志</el-button>
+                        <el-button type="primary" :loading="installOperationLoading"
+                            :disabled="installOperationLoading" @click="saveCustomCommands">保存</el-button>
+                    </template>
                     <el-button type="primary" @click="saveConfig"
                         v-else-if="!['extensions', 'load_status', 'access_log', 'slow_log'].includes(tab)">保存</el-button>
                 </div>
             </div>
         </template>
+
+        <el-dialog v-model="installLogDialogVisible" title="安装日志" width="70%"
+            :close-on-click-modal="false" @closed="stopInstallLogPolling">
+            <div ref="installLogRef" class="install-log-content">
+                <pre>{{ installLogContent || '正在等待日志输出...' }}</pre>
+            </div>
+            <template #footer>
+                <el-button @click="installLogDialogVisible = false">关闭</el-button>
+            </template>
+        </el-dialog>
     </div>
 </template>
 <script>
@@ -189,6 +204,7 @@ export default {
     },
     beforeUnmount() {
         clearInterval(this.podPollTimer)
+        this.stopInstallLogPolling()
     },
     data() {
         const numberFormat = (value) => parseInt(value) || 0
@@ -288,6 +304,21 @@ export default {
             silentBuildCallback: null,
             currentImageName: '',
             skipImageBuild: false,
+            installLogExists: false,
+            installLogContent: '',
+            installLogDialogVisible: false,
+            installLogPollTimer: null,
+            installLogRequesting: false,
+            installLogHasOutput: false,
+            installLogOffset: 0,
+        }
+    },
+    computed: {
+        installOperationLoading() {
+            return this.buildLoading || this.installLogExists
+        },
+        showInstallLogButton() {
+            return this.buildLoading || this.installLogExists
         }
     },
     async created() {
@@ -312,6 +343,9 @@ export default {
             this.loading = false
             if (this.isPHP) {
                 this.getExtensionsDir()
+            }
+            if (['extensions', 'custom_commands'].includes(this.tab)) {
+                await this.loadInstallLog()
             }
         } catch {
             this.$message.error("获取默认Pod失败")
@@ -557,14 +591,21 @@ export default {
         },
         build(options = {}) {
             this.buildLoading = true
+            this.installLogContent = ''
+            this.installLogHasOutput = false
+            this.installLogOffset = 0
             this.silentBuildCallback = options.onComplete || null
-            const command = (this.customCommands ? "sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; " + this.customCommands + ';' : '') + (options.installCommand || '')
+            const customCommand = this.customCommands
+                ? "log_file=/tmp/install-php-extensions.log; : >\"$log_file\"; sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories; (" + this.customCommands + ') >>"$log_file" 2>&1 && rm -f "$log_file";'
+                : ''
+            const command = customCommand + (options.installCommand || '')
             if (this.skipImageBuild) {
                 const execute = command.trim()
                     ? panelAxios.exec(this.execContainerName, this.podName, command)
                     : Promise.resolve()
                 return execute.then(() => {
                     this.buildLoading = false
+                    this.loadInstallLog()
                     if (this.isPHP) {
                         this.editId++
                     }
@@ -575,6 +616,7 @@ export default {
                     }
                 }).catch(() => {
                     this.buildLoading = false
+                    this.loadInstallLog()
                     this.$message.error('操作失败')
                     if (this.silentBuildCallback) {
                         this.silentBuildCallback(false)
@@ -656,6 +698,7 @@ export default {
                 clearInterval(this.podPollTimer)
                 this.podPollTimer = null
                 this.buildLoading = false
+                this.loadInstallLog()
                 if (this.isPHP) {
                     this.editId++
                 }
@@ -692,6 +735,9 @@ export default {
             if (!this.podName) {
                 return
             }
+            if (['extensions', 'custom_commands'].includes(name)) {
+                this.loadInstallLog()
+            }
             const tabLoaders = {
                 fpm: this.loadFpmContent,
                 config_file: this.loadPhpIniContent,
@@ -703,6 +749,82 @@ export default {
                 load_status: this.loadLoadStatus
             }
             tabLoaders[name]?.call(this)
+        },
+        getInstallLogCommand(includeContent = false, offset = 0) {
+            const readContent = includeContent
+                ? ` if [ ${offset} -eq 0 ] || [ "$size" -lt ${offset} ]; then tail -n 100 /tmp/install-php-extensions.log; elif [ ${offset} -lt "$size" ]; then start=${offset + 1}; count=$((size - start + 1)); tail -c +"$start" /tmp/install-php-extensions.log | head -c "$count"; fi;`
+                : ''
+            return `if [ -f /tmp/install-php-extensions.log ]; then size=$(wc -c < /tmp/install-php-extensions.log); size=$((size + 0)); printf '%s:%s\\n' '__W7_INSTALL_LOG_EXISTS__' "$size";${readContent} fi`
+        },
+        loadInstallLog(updateContent = false) {
+            if (!this.podName || this.installLogRequesting) {
+                return Promise.resolve()
+            }
+            const wasExists = this.installLogExists
+            const requestedOffset = wasExists ? this.installLogOffset : 0
+            this.installLogRequesting = true
+            return panelAxios.exec(this.execContainerName, this.podName, this.getInstallLogCommand(updateContent, requestedOffset)).then(res => {
+                const marker = '__W7_INSTALL_LOG_EXISTS__:'
+                const output = typeof res.data === 'string' ? res.data : ''
+                const headerEnd = output.indexOf('\n')
+                const header = headerEnd >= 0 ? output.slice(0, headerEnd) : output
+                const exists = header.startsWith(marker)
+                this.installLogExists = exists
+                if (exists && !updateContent && !wasExists) {
+                    this.installLogContent = ''
+                    this.installLogHasOutput = false
+                    this.installLogOffset = 0
+                }
+                if (updateContent) {
+                    if (exists) {
+                        const size = Number.parseInt(header.slice(marker.length), 10) || 0
+                        const content = headerEnd >= 0 ? output.slice(headerEnd + 1) : ''
+                        const resetContent = !wasExists || size < requestedOffset
+                        if (resetContent) {
+                            this.installLogContent = ''
+                            this.installLogHasOutput = false
+                        }
+                        if (content) {
+                            this.installLogContent = this.installLogHasOutput
+                                ? this.installLogContent + content
+                                : content
+                            this.installLogHasOutput = true
+                        }
+                        this.installLogOffset = size
+                    } else if (!this.installLogHasOutput) {
+                        this.installLogContent = this.buildLoading
+                            ? '正在等待日志输出...'
+                            : '日志文件不存在或任务已结束'
+                    }
+                    this.$nextTick(() => {
+                        const logRef = this.$refs.installLogRef
+                        if (logRef) {
+                            logRef.scrollTop = logRef.scrollHeight
+                        }
+                    })
+                }
+            }).catch(() => {
+                if (updateContent && !this.installLogContent) {
+                    this.installLogContent = '读取日志失败，请稍后重试'
+                }
+            }).finally(() => {
+                this.installLogRequesting = false
+            })
+        },
+        openInstallLog() {
+            this.installLogDialogVisible = true
+            if (!this.installLogHasOutput) {
+                this.installLogContent = ''
+            }
+            this.stopInstallLogPolling()
+            this.loadInstallLog(true)
+            this.installLogPollTimer = setInterval(() => {
+                this.loadInstallLog(true)
+            }, 1000)
+        },
+        stopInstallLogPolling() {
+            clearInterval(this.installLogPollTimer)
+            this.installLogPollTimer = null
         },
         parseLogPathFromFpm(output, key) {
             const lines = output.split('\n')
@@ -1137,6 +1259,24 @@ export default {
 }
 
 .log-content pre {
+    margin: 0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    color: #d4d4d4;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.install-log-content {
+    height: 60vh;
+    overflow: auto;
+    background-color: #1e1e1e;
+    border-radius: 4px;
+    padding: 15px;
+}
+
+.install-log-content pre {
     margin: 0;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     font-size: 12px;
