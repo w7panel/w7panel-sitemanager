@@ -17,10 +17,11 @@ spec:
       {{- include "tradition-tool.selectorLabels" . | nindent 6 }}
   template:
     metadata:
-      {{- with .Values.podAnnotations }}
       annotations:
+        w7.cc/tradition-tool-restart-revision: {{ .Release.Revision | quote }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       labels:
         {{- include "tradition-tool.selectorLabels" . | nindent 8 }}
     spec:
