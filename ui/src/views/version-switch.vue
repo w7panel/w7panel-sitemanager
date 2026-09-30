@@ -147,10 +147,7 @@ export default {
         if (!Array.isArray(entries)) return annotations
         annotations[ROOTFS_ANNOTATION] = JSON.stringify(entries.map(entry => ({
           ...entry,
-          path: String(entry.path || '').replace(
-            /^(www\/server\/)[^/]+(\/system)$/,
-            `$1${this.applicationName()}-${version}$2`
-          )
+          path: `www/server/${this.appGroupName()}/${this.applicationName()}-${version}/system`
         })))
       } catch {
         // Keep an unrecognised annotation untouched.
@@ -219,7 +216,7 @@ export default {
       const staleEntries = oldEntries.filter(entry =>
         !newPaths.has(entry.path)
         && entry.volumeName
-        && /^www\/server\/[A-Za-z0-9._-]+\/system$/.test(entry.path)
+        && /^www\/server\/(?:[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+\/system$/.test(entry.path)
       )
       if (!staleEntries.length) return
 
