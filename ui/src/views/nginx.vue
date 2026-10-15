@@ -134,15 +134,18 @@ export default {
         const podResponse = await panelAxios.get('/api/v1/namespaces/default/pods', {
           params: { labelSelector }
         })
-        const pod = (podResponse.data?.items || []).find(item => {
-          if (item.metadata?.deletionTimestamp || item.status?.phase !== 'Running') return false
+        // Exec only needs a running container; a failed readiness probe must not block repair.
+        const candidates = (podResponse.data?.items || []).filter(item => {
+          if (!item.metadata?.name || item.metadata.deletionTimestamp || item.status?.phase !== 'Running') return false
           const status = item.status?.containerStatuses?.find(status => status.name === containerName)
-          return status?.ready === true
+          return !!status?.state?.running
         })
-        if (pod?.metadata?.name) return { podName: pod.metadata.name, containerName }
+        const pod = candidates.find(item => item.status.containerStatuses.some(status => status.name === containerName && status.ready))
+          || candidates[0]
+        if (pod) return { podName: pod.metadata.name, containerName }
         if (attempt < 9) await new Promise(resolve => setTimeout(resolve, 1000))
       }
-      throw new Error('未获取到 Ready 状态的 Nginx Pod')
+      throw new Error('Nginx 容器尚未运行，暂时无法读取或保存配置。请先恢复容器运行后重试')
     },
     getConfFileCommand(configFileName) {
       return `set -eu
