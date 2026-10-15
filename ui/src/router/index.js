@@ -1,6 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import NginxConfig from '@/views/nginx.vue'
-import VersionSwitch from '@/views/version-switch.vue'
+import RuntimeConfig from '@/views/runtime-config.vue'
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -15,9 +15,13 @@ const router = createRouter({
       component: NginxConfig
     },
     {
+      path: '/runtime-config',
+      name: 'runtime-config',
+      component: RuntimeConfig
+    },
+    {
       path: '/version',
-      name: 'version',
-      component: VersionSwitch
+      redirect: '/runtime-config'
     },
     {
       path: '/:pathMatch(.*)*',

@@ -1,8 +1,16 @@
 <template>
   <main class="nginx-page" v-loading="loading">
+    <el-alert v-if="latestTemplateDiffers" class="template-notice" type="warning" :closable="false" show-icon
+      title="应用最新模板与当前生效配置不同"
+      description="升级已保留你的配置。可查看最新模板，将需要的内容合并到下方配置后再应用。" />
+    <el-alert v-if="latestTemplateError" class="template-notice" type="warning" :closable="false" show-icon
+      title="最新模板读取失败" :description="latestTemplateError" />
     <section class="page-card editor-card">
       <header class="card-header">
-        <h1>Nginx 配置</h1>
+        <div class="heading-row">
+          <h1>Nginx 配置</h1>
+          <el-button v-if="latestNginxConfig !== null" @click="latestDialogVisible = true">查看最新模板</el-button>
+        </div>
         <p>编辑默认域名对应的站点配置，保存前会自动校验 Nginx 语法。</p>
       </header>
       <Editor v-model:content="nginxConfig" />
@@ -12,6 +20,11 @@
         应用
       </el-button>
     </div>
+    <el-dialog v-model="latestDialogVisible" title="应用最新 Nginx 模板" width="min(1000px, 94vw)">
+      <p class="template-help">这是最近一次安装或升级生成的模板。若当前配置有自定义修改，可复制需要的内容到编辑器，手动合并后应用。</p>
+      <textarea class="template-content" :value="latestNginxConfig" readonly spellcheck="false" aria-label="应用最新 Nginx 模板，只读" />
+      <template #footer><el-button @click="latestDialogVisible = false">关闭</el-button></template>
+    </el-dialog>
   </main>
 </template>
 
@@ -20,6 +33,7 @@ import Editor from '@/components/Editor.vue'
 import panelAxios from '@/utils/panel'
 
 const NGINX_CONF_DIR = '/www/server/nginx/conf.d'
+const NGINX_TEMPLATE_DIR = '/www/server/nginx/template-configs'
 const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
 const DEFAULT_DOMAIN_ANNOTATION = 'w7.cc/default-domain'
 
@@ -30,13 +44,47 @@ export default {
     return {
       loading: true,
       saveLoading: false,
-      nginxConfig: ''
+      nginxConfig: '',
+      appliedNginxConfig: '',
+      latestNginxConfig: null,
+      latestTemplateError: '',
+      latestDialogVisible: false
+    }
+  },
+  computed: {
+    latestTemplateDiffers() {
+      return this.latestNginxConfig !== null
+        && this.normalizeNginxConfig(this.latestNginxConfig) !== this.normalizeNginxConfig(this.appliedNginxConfig)
     }
   },
   created() {
     this.loadNginxConfig()
   },
   methods: {
+    normalizeNginxConfig(content) {
+      const lines = String(content).split('\n')
+      if (lines[lines.length - 1] === '') lines.pop()
+      const kept = []
+      let quote = ''
+      let escaped = false
+      for (const rawLine of lines) {
+        const line = rawLine.replace(/\r$/, '')
+        if (/^[ \t]*$/.test(line) && !quote && !escaped) continue
+        kept.push(line)
+        escaped = false
+        for (const char of line) {
+          if (escaped) { escaped = false; continue }
+          if (char === '\\') { escaped = true; continue }
+          if (quote) {
+            if (char === quote) quote = ''
+            continue
+          }
+          if (char === '#') break
+          if (char === '"' || char === "'") quote = char
+        }
+      }
+      return kept.join('\n')
+    },
     getAppgroupName() {
       return window.$wujie?.props?.group || window.$wujie?.props?.appgroup || ''
     },
@@ -130,6 +178,25 @@ fi
 rm -f "$BACKUP_FILE"
 trap - EXIT HUP INT TERM`
     },
+    buildLatestTemplateCommand(configFileName) {
+      const file = `${NGINX_TEMPLATE_DIR}/${configFileName}`.replaceAll("'", "'\"'\"'")
+      return `set -eu
+LATEST_FILE='${file}'
+if [ -f "$LATEST_FILE" ]; then cat "$LATEST_FILE"; fi`
+    },
+    async loadLatestTemplate(containerName, podName, configFileName) {
+      this.latestNginxConfig = null
+      this.latestTemplateError = ''
+      try {
+        const response = await panelAxios.exec(containerName, podName, this.buildLatestTemplateCommand(configFileName))
+        const content = String(response.data ?? '')
+        // Older charts do not publish a template. Valid generated templates are nonempty.
+        this.latestNginxConfig = content.length ? content : null
+      } catch (error) {
+        const detail = error?.response?.data?.error || error?.message || '读取失败'
+        this.latestTemplateError = `当前配置仍可编辑和应用。${detail}`
+      }
+    },
     async loadNginxConfig() {
       if (!this.getNginxDeploymentName()) {
         this.$message.error('未获取到 Nginx Deployment 名称')
@@ -156,6 +223,7 @@ trap - EXIT HUP INT TERM`
               `${this.getConfFileCommand(configFileName)}\ncat "$CONF_FILE"`
             )
             this.nginxConfig = String(response.data ?? '')
+            this.appliedNginxConfig = this.nginxConfig
             lastError = null
             break
           } catch (error) {
@@ -164,6 +232,7 @@ trap - EXIT HUP INT TERM`
           }
         }
         if (lastError) throw lastError
+        await this.loadLatestTemplate(containerName, podName, configFileName)
       } catch (error) {
         this.$message.error(error?.response?.data?.error || error?.message || 'Nginx配置获取失败')
       } finally {
@@ -184,6 +253,7 @@ trap - EXIT HUP INT TERM`
         return
       }
 
+      const content = this.nginxConfig
       this.saveLoading = true
       try {
         const [{ containerName, podName }, configFileName] = await Promise.all([
@@ -193,9 +263,10 @@ trap - EXIT HUP INT TERM`
         await panelAxios.exec(
           containerName,
           podName,
-          this.buildSaveCommand(this.nginxConfig, configFileName)
+          this.buildSaveCommand(content, configFileName)
         )
         await this.reload()
+        this.appliedNginxConfig = content
         this.$message.success('操作成功')
       } catch (error) {
         this.$message.error(error?.response?.data?.error || error?.message || 'Nginx配置保存失败')
@@ -226,6 +297,10 @@ trap - EXIT HUP INT TERM`
 .nginx-page {
   box-sizing: border-box;
 }
+.template-notice { margin-bottom: 16px; }
+.heading-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.template-help { margin: 0 0 16px; color: #4e5969; line-height: 1.7; }
+.template-content { box-sizing: border-box; width: 100%; height: 52vh; padding: 16px; border: 1px solid #e5e6eb; border-radius: 4px; background: #f7f8fa; color: #1d2129; font: 13px/1.7 ui-monospace, monospace; resize: vertical; white-space: pre; overflow: auto; }
 .page-card { background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); }
 .editor-card { overflow: hidden; }
 .card-header { padding: 22px 24px 16px; border-bottom: 1px solid #f2f3f5; }

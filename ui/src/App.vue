@@ -16,7 +16,8 @@ function resolveRoutePath(value) {
   if (hashIndex >= 0) path = path.slice(hashIndex + 1)
   path = path.split('?')[0].replace(/^\/+|\/+$/g, '')
   const segments = path.split('/').filter(Boolean)
-  return segments[segments.length - 1] === 'version' ? '/version' : '/nginx'
+  const page = segments[segments.length - 1]
+  return ['runtime-config', 'version'].includes(page) ? '/runtime-config' : '/nginx'
 }
 
 function getInitialRoute() {
