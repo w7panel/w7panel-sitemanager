@@ -466,8 +466,10 @@ input:disabled, select:disabled, textarea:disabled { background: #f7f8fa; color:
 .port-list { display: grid; gap: 12px; max-width: 540px; }
 .port-row { display: grid; grid-template-columns: 80px minmax(0, 380px) auto; align-items: center; gap: 16px; }
 .port-row label { color: #4e5969; }
-.save-bar { position: sticky; bottom: 24px; padding: 18px 24px; background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; box-shadow: 0 -4px 16px rgb(0 0 0 / 3%); }
+.save-bar { padding: 18px 24px; background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; box-shadow: 0 -4px 16px rgb(0 0 0 / 3%); }
 .save-bar strong { color: #1d2129; font-size: 14px; font-weight: 500; }
 :deep(.el-button) { border-radius: 4px; --el-color-primary: #165dff; }
-@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; gap: 8px; } .form-grid label { margin-top: 8px; } .page-heading, .card-body, .card-header { padding: 16px; } .page-heading, .section-heading, .save-bar { align-items: flex-start; flex-direction: column; gap: 12px; } .save-bar :deep(.el-button) { width: 100%; } }
+.page-heading > div, .section-heading > div { flex: 1; min-width: 0; }
+.page-heading .panel-outline-button, .section-heading .panel-outline-button { margin-left: auto; }
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; gap: 8px; } .form-grid label { margin-top: 8px; } .page-heading, .card-body, .card-header { padding: 16px; } .page-heading, .section-heading { align-items: flex-start; gap: 12px; } .save-bar { align-items: flex-start; flex-direction: column; gap: 12px; } }
 </style>
