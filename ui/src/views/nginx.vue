@@ -12,7 +12,7 @@
       <span class="gateway-progress-spinner" aria-hidden="true"></span>
       <span>{{ gatewayPhase || '正在处理网关配置，请稍候…' }}</span>
     </div>
-    <el-alert v-if="(gatewayEnabled || (gatewayEditing && gatewayConfigExists)) && latestTemplateDiffers" class="template-notice" type="warning" :closable="false" show-icon
+    <el-alert v-if="(gatewayEnabled || (gatewayEditing && gatewayConfigExists)) && latestTemplateDiffers" class="template-notice template-update-notice" type="info" :closable="false" show-icon
       title="应用最新模板与当前生效配置不同"
       description="升级已保留你的配置。可查看最新模板，将需要的内容合并到下方配置后再应用。" />
     <el-alert v-if="latestTemplateError" class="template-notice" type="warning" :closable="false" show-icon
@@ -347,6 +347,19 @@ export default {
 @keyframes gateway-progress-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .gateway-progress-spinner { animation: none; } }
 .template-notice { margin-bottom: 16px; }
+.template-update-notice {
+  --el-alert-padding: 20px 15px;
+  --el-alert-border-radius-base: 2px;
+  --el-alert-icon-large-size: 18px;
+  align-items: flex-start;
+  border: 0;
+  background: #f2f7ff;
+  color: #4e5969;
+}
+.template-update-notice :deep(.el-alert__icon) { flex-shrink: 0; margin: 3px 8px 0 0; color: #165dff; }
+.template-update-notice :deep(.el-alert__content) { min-width: 0; }
+.template-update-notice :deep(.el-alert__title) { color: #1d2129; font-size: 16px; font-weight: 500; line-height: 24px; }
+.template-update-notice :deep(.el-alert__description) { color: #4e5969; font-size: 14px; line-height: 22px; }
 .heading-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .template-help { margin: 0 0 16px; color: #4e5969; line-height: 1.7; }
 .template-content { box-sizing: border-box; width: 100%; height: 52vh; padding: 16px; border: 1px solid #e5e6eb; border-radius: 4px; background: #f7f8fa; color: #1d2129; font: 13px/1.7 ui-monospace, monospace; min-height: 0; flex: 1 1 auto; resize: none; white-space: pre; overflow: auto; overscroll-behavior: contain; }
