@@ -435,7 +435,7 @@ export default {
 </script>
 
 <style scoped>
-.runtime-page { box-sizing: border-box; display: grid; gap: 18px; max-width: 1120px; margin: 0 auto; padding: 8px 0 24px; }
+.runtime-page { box-sizing: border-box; display: grid; gap: 18px; max-width: 1120px; margin: 0 auto; padding: 8px 0 32px; }
 .page-heading, .section-heading, .save-bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 h1 { margin: 0; color: #1d2129; font-size: 22px; font-weight: 600; }
 h2 { margin: 0; color: #1d2129; font-size: 16px; font-weight: 600; }
@@ -464,7 +464,7 @@ input:disabled, select:disabled, textarea:disabled { background: #f7f8fa; color:
 .port-list { display: grid; gap: 12px; max-width: 540px; }
 .port-row { display: grid; grid-template-columns: 80px minmax(120px, 240px) auto; align-items: center; gap: 16px; }
 .port-row label { color: #4e5969; }
-.save-bar { position: sticky; bottom: 0; padding: 18px 24px; background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; box-shadow: 0 -4px 16px rgb(0 0 0 / 3%); }
+.save-bar { position: sticky; bottom: 24px; padding: 18px 24px; background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; box-shadow: 0 -4px 16px rgb(0 0 0 / 3%); }
 .save-bar strong { color: #1d2129; font-size: 14px; font-weight: 500; }
 :deep(.el-button) { border-radius: 4px; --el-color-primary: #165dff; }
 @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; gap: 8px; } .form-grid label { margin-top: 8px; } .card-body, .card-header { padding: 16px; } .page-heading, .section-heading, .save-bar { align-items: flex-start; flex-direction: column; gap: 12px; } .save-bar :deep(.el-button) { width: 100%; } }

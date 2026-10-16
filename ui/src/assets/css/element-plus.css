@@ -6,3 +6,35 @@
 @import "element-plus/theme-chalk/el-overlay.css";
 @import "element-plus/theme-chalk/el-dialog.css";
 @import "element-plus/theme-chalk/el-alert.css";
+
+/* Keep the teleported template dialog and its scrolling content inside one mask. */
+.nginx-template-overlay {
+  position: fixed;
+  inset: 0;
+  height: auto;
+  overflow: hidden;
+}
+.nginx-template-overlay .el-overlay-dialog {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 24px 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.nginx-template-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+}
+.nginx-template-dialog .el-dialog__header,
+.nginx-template-dialog .el-dialog__footer {
+  flex-shrink: 0;
+}
+.nginx-template-dialog .el-dialog__body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}

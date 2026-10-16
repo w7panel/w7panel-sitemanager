@@ -29,7 +29,7 @@
         {{ gatewayEditing ? '保存配置并开启' : '应用' }}
       </el-button>
     </div>
-    <el-dialog v-model="latestDialogVisible" append-to-body title="应用最新 Nginx 模板" width="min(1000px, 94vw)">
+    <el-dialog v-model="latestDialogVisible" append-to-body align-center class="nginx-template-dialog" modal-class="nginx-template-overlay" title="应用最新 Nginx 模板" width="min(1000px, 94vw)">
       <p class="template-help">这是最近一次安装或升级生成的模板。若当前配置有自定义修改，可复制需要的内容到编辑器，手动合并后应用。</p>
       <textarea class="template-content" :value="latestNginxConfig" readonly spellcheck="false" aria-label="应用最新 Nginx 模板，只读" />
       <template #footer><el-button @click="latestDialogVisible = false">关闭</el-button></template>
@@ -333,6 +333,7 @@ export default {
 <style scoped>
 .nginx-page {
   box-sizing: border-box;
+  padding-bottom: 32px;
 }
 .gateway-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 24px; margin-bottom: 16px; }
 .gateway-error-detail { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; }
@@ -341,7 +342,7 @@ export default {
 .template-notice { margin-bottom: 16px; }
 .heading-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .template-help { margin: 0 0 16px; color: #4e5969; line-height: 1.7; }
-.template-content { box-sizing: border-box; width: 100%; height: 52vh; padding: 16px; border: 1px solid #e5e6eb; border-radius: 4px; background: #f7f8fa; color: #1d2129; font: 13px/1.7 ui-monospace, monospace; resize: vertical; white-space: pre; overflow: auto; }
+.template-content { box-sizing: border-box; width: 100%; height: 52vh; padding: 16px; border: 1px solid #e5e6eb; border-radius: 4px; background: #f7f8fa; color: #1d2129; font: 13px/1.7 ui-monospace, monospace; min-height: 0; flex: 1 1 auto; resize: none; white-space: pre; overflow: auto; overscroll-behavior: contain; }
 .page-card { background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); }
 .editor-card { overflow: hidden; }
 .card-header { padding: 22px 24px 16px; border-bottom: 1px solid #f2f3f5; }
