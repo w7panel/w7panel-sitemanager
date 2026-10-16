@@ -18,7 +18,7 @@ function resolveRoutePath(value) {
   const segments = path.split('/').filter(Boolean)
   const page = segments[segments.length - 1]
   if (page === 'environment') return '/environment'
-  return ['runtime-config', 'version'].includes(page) ? '/runtime-config' : '/nginx'
+  return page === 'version' ? '/version' : '/nginx'
 }
 
 function getInitialRoute() {

@@ -17,13 +17,9 @@ const router = createRouter({
       component: NginxConfig
     },
     {
-      path: '/runtime-config',
-      name: 'runtime-config',
-      component: RuntimeConfig
-    },
-    {
       path: '/version',
-      redirect: '/runtime-config'
+      name: 'version',
+      component: RuntimeConfig
     },
     {
       path: '/environment',
