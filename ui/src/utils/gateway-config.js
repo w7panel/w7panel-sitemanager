@@ -1,6 +1,6 @@
 import { readSelection, RUNTIME_CONFIG } from './runtime-config'
 import { ingressBackendPatch } from './ingress-config'
-import { defaultGatewayNginxConfig, initializeNginxConfigCommand, requireNginxConfigFileCommand, saveNginxConfigCommand, checkNginxValidation } from './nginx-config'
+import { defaultGatewayNginxConfig, readGatewayNginxConfigCommand, saveNginxConfigCommand, validateNginxConfigCommand, checkNginxValidation } from './nginx-config'
 
 const DEPLOYMENTS = '/apis/apps/v1/namespaces/default/deployments'
 const SERVICES = '/api/v1/namespaces/default/services'
@@ -139,59 +139,67 @@ export class GatewayController {
     }
     return false
   }
-  async switch(enabled, initialConfig = '', { repairConfig = false } = {}) {
+  async prepare() {
+    this.prepared = null
+    try {
+      await this.load()
+      const { config, tool, fileName } = this.state
+      if (config.enabled) throw new Error('网关状态已变化，请刷新后重试')
+      // Check the route before starting a preparation container, without changing it.
+      const ingresses = (await this.api.get(INGRESSES, { params: { labelSelector: `w7.cc/group-name=${this.group}` } })).data?.items || []
+      gatewayIngressPatches(ingresses, config, true)
+      if (tool.spec.replicas === 0) throw new Error('网关已停止，请先启动后重试')
+      const preparation = clone(config.variants.enabled)
+      const script = preparation.args?.[0]
+      if (!script?.includes("nginx -g 'daemon off;'")) throw new Error('当前网关启动脚本不支持初始化配置，请升级 tradition-tool')
+      preparation.args[0] = script.replace("nginx -g 'daemon off;'", 'while :; do sleep 3600; done')
+      const operation = `gw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      this.onPhase('准备读取 Nginx 配置，应用访问入口保持不变')
+      await this.patchTool(preparation, operation, false)
+      const pod = await this.waitForTool(operation, false)
+      const response = await this.api.exec(pod.containerName, pod.podName, readGatewayNginxConfigCommand(fileName))
+      const output = String(response.data ?? '')
+      let content, exists
+      if (output.startsWith('EXISTING\n')) { content = output.slice('EXISTING\n'.length); exists = true }
+      else if (output === 'MISSING\n') { content = this.state.initialNginxConfig; exists = false }
+      else throw new Error('Nginx 配置读取结果不正确，请重试')
+      this.prepared = { fileName, operation, toolUID: tool.metadata.uid }
+      return { ...pod, fileName, content, exists }
+    } finally { this.onPhase('') }
+  }
+  async switch(enabled, content = '', { saveConfig = false } = {}) {
     let changed = false
     let nginxConfigSaved = false
     try {
       await this.load()
       const { config, tool, fileName } = this.state
-      if (repairConfig && (!enabled || config.enabled || this.recovery?.fileName !== fileName)) throw Object.assign(new Error('配置修复状态已变化，请重新开启网关后检查配置'), { nginxRecoveryUnavailable: true })
-      if (repairConfig && !initialConfig.trim()) throw new Error('Nginx配置不能为空')
+      if (enabled && !config.enabled) {
+        if (!saveConfig || this.prepared?.fileName !== fileName || this.prepared?.toolUID !== tool.metadata.uid
+          || this.prepared?.operation !== tool.spec.template.metadata?.labels?.[OPERATION]) {
+          throw Object.assign(new Error('请先读取并确认 Nginx 配置后再开启网关'), { nginxPreparationRequired: true })
+        }
+      } else if (saveConfig) {
+        throw Object.assign(new Error('网关状态已变化，请重新读取配置后再操作'), { nginxPreparationRequired: true })
+      }
+      if (saveConfig && !content.trim()) throw new Error('Nginx配置不能为空')
       if (tool.spec.replicas === 0) throw new Error('网关已停止，请先启动后重试')
       const ingresses = (await this.api.get(INGRESSES, { params: { labelSelector: `w7.cc/group-name=${this.group}` } })).data?.items || []
       const routes = gatewayIngressPatches(ingresses, config, enabled)
       const operation = `gw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
       if (enabled) {
-        const initialContent = initialConfig.trim() ? initialConfig : this.state.initialNginxConfig
         changed = await this.ensureService()
-        // Start a shell before starting nginx so an absent vhost can be initialized on the PVC.
-        const preparation = clone(config.variants.enabled)
-        const script = preparation.args?.[0]
-        if (!script?.includes("nginx -g 'daemon off;'")) throw new Error('当前网关启动脚本不支持初始化配置，请升级 tradition-tool')
-        preparation.args[0] = script.replace("nginx -g 'daemon off;'", 'while :; do sleep 3600; done')
         let activeOperation = tool.spec.template.metadata?.labels?.[OPERATION]
-        if (!config.enabled) {
-          this.onPhase('准备网关配置目录')
-          await this.patchTool(preparation, operation, false)
-          changed = true
-          activeOperation = operation
-        }
         const pod = await this.waitForTool(activeOperation, false)
-        this.onPhase(repairConfig ? '保存修复配置并校验 Nginx 语法' : '保留已有配置并校验 Nginx 语法')
-        try {
-          const response = await this.api.exec(pod.containerName, pod.podName, repairConfig
-            ? saveNginxConfigCommand(initialContent, fileName) : initializeNginxConfigCommand(fileName, initialContent))
-          checkNginxValidation(response.data)
-          nginxConfigSaved = repairConfig
-        } catch (error) {
-          if (error.nginxValidationFailed && !config.enabled) {
-            try {
-              const response = await this.api.exec(pod.containerName, pod.podName,
-                `${requireNginxConfigFileCommand(fileName)}\ncat "$CONF_FILE"`)
-              this.recovery = { fileName }
-              error.nginxRecovery = { ...pod, fileName, content: String(response.data ?? ''), preserveDraft: repairConfig }
-            } catch (readError) {
-              this.recovery = null
-              error.nginxRecoveryUnavailable = true
-              error.message += '\n实际配置读取失败，编辑内容已保留，请重新开启后重试。' + (readError.response?.data?.error || readError.message)
-            }
-          }
-          throw error
-        }
+        this.onPhase(saveConfig ? '保存配置并校验 Nginx 语法' : '校验 Nginx 语法')
+        const response = await this.api.exec(pod.containerName, pod.podName, saveConfig
+          ? saveNginxConfigCommand(content, fileName, { allowCreate: true })
+          : validateNginxConfigCommand())
+        checkNginxValidation(response.data)
+        nginxConfigSaved = saveConfig
         this.onPhase('启动 Nginx 网关')
         if (!config.enabled) {
-          await this.patchTool(config.variants.enabled, operation + '-run')
-          activeOperation = operation + '-run'
+          await this.patchTool(config.variants.enabled, operation)
+          activeOperation = operation
         }
         await this.waitForTool(activeOperation, true)
         if (config.enabled) {
@@ -210,13 +218,13 @@ export class GatewayController {
         await this.waitForTool(operation, true)
       }
       const state = await this.load()
-      this.recovery = null
+      this.prepared = null
       return state
     } catch (error) {
       const detail = error.response?.data?.error || error.response?.data?.message || error.message
       throw Object.assign(new Error((changed ? '部分配置已提交，请刷新检查后重试。' : '') + detail),
-        { nginxRecovery: error.nginxRecovery, nginxValidationFailed: error.nginxValidationFailed,
-          nginxConfigSaved, nginxRecoveryUnavailable: error.nginxRecoveryUnavailable })
+        { nginxValidationFailed: error.nginxValidationFailed, nginxConfigSaved,
+          nginxPreparationRequired: error.nginxPreparationRequired })
     } finally { this.onPhase('') }
   }
 }

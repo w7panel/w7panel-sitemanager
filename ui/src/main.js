@@ -1,5 +1,5 @@
 import { createApp } from 'vue'
-import { ElButton, ElLoading, ElMessage } from 'element-plus'
+import { ElAlert, ElButton, ElDialog, ElLoading, ElMessage } from 'element-plus'
 import App from './App.vue'
 import router from './router'
 import './assets/css/element-plus.css'
@@ -13,7 +13,9 @@ let app = null
 function createNginxApp() {
   const nextApp = createApp(App)
   nextApp.use(router)
+  nextApp.use(ElAlert)
   nextApp.use(ElButton)
+  nextApp.use(ElDialog)
   nextApp.use(ElLoading)
   nextApp.config.globalProperties.$message = ElMessage
   return nextApp

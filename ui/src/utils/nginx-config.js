@@ -2,13 +2,29 @@ const NGINX_CONF_DIR = '/www/server/nginx/conf.d'
 const NGINX_TEMPLATE_DIR = '/www/server/nginx/template-configs'
 export const NGINX_VALIDATION_FAILED = 'W7_NGINX_VALIDATION_FAILED\n'
 
-export function requireNginxConfigFileCommand(configFileName) {
+function nginxConfigPathCommand(configFileName) {
   if (!/^[A-Za-z0-9._-]+\.conf$/.test(configFileName) || configFileName.includes('..')) throw new Error('站点配置文件名不合法')
   return `set -eu
 CONF_DIR='${NGINX_CONF_DIR}'
-[ -d "$CONF_DIR" ] || { echo "Nginx 配置目录不存在: $CONF_DIR" >&2; exit 1; }
-CONF_FILE="$CONF_DIR/${configFileName}"
+CONF_FILE="$CONF_DIR/${configFileName}"`
+}
+
+export function requireNginxConfigFileCommand(configFileName) {
+  return `${nginxConfigPathCommand(configFileName)}
 [ -f "$CONF_FILE" ] || { echo "未找到默认域名对应的 Nginx 配置文件: $CONF_FILE" >&2; exit 1; }`
+}
+
+// A prefix distinguishes an absent file from an existing, deliberately empty file.
+export function readGatewayNginxConfigCommand(fileName) {
+  return `${nginxConfigPathCommand(fileName)}
+if [ -f "$CONF_FILE" ]; then
+  printf 'EXISTING\\n'
+  cat "$CONF_FILE"
+elif [ -e "$CONF_FILE" ] || [ -L "$CONF_FILE" ]; then
+  echo "站点配置不是可读取的普通文件: $CONF_FILE" >&2; exit 1
+else
+  printf 'MISSING\\n'
+fi`
 }
 
 // exec2 drops command output on nonzero exit. Return a recognizable result for
@@ -21,21 +37,44 @@ export function checkNginxValidation(data) {
   }
 }
 
-export function saveNginxConfigCommand(content, configFileName) {
+export function validateNginxConfigCommand() {
+  return `set -eu
+VALIDATION_LOG=$(mktemp)
+trap 'rm -f "$VALIDATION_LOG"' EXIT
+if ! nginx -t > "$VALIDATION_LOG" 2>&1; then
+  printf '%s\\n' 'W7_NGINX_VALIDATION_FAILED'
+  cat "$VALIDATION_LOG"
+fi`
+}
+
+export function saveNginxConfigCommand(content, configFileName, { allowCreate = false } = {}) {
   const text = String(content ?? '')
   let marker = 'W7_NGINX_EOF'
   while (text.includes(marker)) marker += '_X'
-  return `${requireNginxConfigFileCommand(configFileName)}
+  return `${allowCreate ? nginxConfigPathCommand(configFileName) : requireNginxConfigFileCommand(configFileName)}
+mkdir -p "$CONF_DIR"
+existed=false
+if [ -f "$CONF_FILE" ]; then existed=true
+elif [ -e "$CONF_FILE" ] || [ -L "$CONF_FILE" ]; then
+  echo "站点配置不是普通文件: $CONF_FILE" >&2; exit 1
+fi
 TMP_DIR=$(mktemp -d "$CONF_DIR/.w7-nginx-save.XXXXXX")
 replaced=false
 cleanup() {
-  if [ "$replaced" = true ]; then mv "$TMP_DIR/backup" "$CONF_FILE"; fi
+  if [ "$replaced" = true ]; then
+    if [ "$existed" = true ]; then mv "$TMP_DIR/backup" "$CONF_FILE"; else rm -f "$CONF_FILE"; fi
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
-cp -p "$CONF_FILE" "$TMP_DIR/backup"
-cp -p "$CONF_FILE" "$TMP_DIR/new"
+if [ "$existed" = true ]; then
+  cp -p "$CONF_FILE" "$TMP_DIR/backup"
+  cp -p "$CONF_FILE" "$TMP_DIR/new"
+else
+  touch "$TMP_DIR/new"
+  chmod 644 "$TMP_DIR/new"
+fi
 cat <<'${marker}' > "$TMP_DIR/new"
 ${text}
 ${marker}
@@ -44,11 +83,11 @@ mv "$TMP_DIR/new" "$CONF_FILE"
 if nginx -t > "$TMP_DIR/validation" 2>&1; then
   replaced=false
 else
-  mv "$TMP_DIR/backup" "$CONF_FILE"
+  if [ "$existed" = true ]; then mv "$TMP_DIR/backup" "$CONF_FILE"; else rm -f "$CONF_FILE"; fi
   replaced=false
   printf '%s\\n' 'W7_NGINX_VALIDATION_FAILED'
   cat "$TMP_DIR/validation"
-  echo 'Nginx 配置校验失败，已恢复原配置'
+  echo 'Nginx 配置校验失败，已恢复保存前状态'
 fi`
 }
 
@@ -104,38 +143,6 @@ export function defaultGatewayNginxConfig(application, config, domain) {
 ${location}
 }
 `
-}
-
-export function initializeNginxConfigCommand(fileName, content) {
-  if (!/^[A-Za-z0-9._-]+\.conf$/.test(fileName) || fileName.includes('..')) throw new Error('站点配置文件名不合法')
-  let marker = 'W7_GATEWAY_INITIAL_CONFIG'
-  while (content.includes(marker)) marker += '_X'
-  return `set -eu
-CONF_DIR='${NGINX_CONF_DIR}'
-CONF_FILE="$CONF_DIR/${fileName}"
-mkdir -p "$CONF_DIR"
-VALIDATION_LOG=$(mktemp)
-trap 'rm -f "$VALIDATION_LOG"' EXIT
-created=false
-if [ ! -e "$CONF_FILE" ] && [ ! -L "$CONF_FILE" ]; then
-  TMP_FILE=$(mktemp "$CONF_DIR/.initial.XXXXXX")
-  trap 'rm -f "$TMP_FILE" "$VALIDATION_LOG"' EXIT
-  cat <<'${marker}' > "$TMP_FILE"
-${content}
-${marker}
-  chmod 644 "$TMP_FILE"
-  if ln "$TMP_FILE" "$CONF_FILE"; then created=true; fi
-  rm -f "$TMP_FILE"
-  trap 'rm -f "$VALIDATION_LOG"' EXIT
-fi
-if ! nginx -t > "$VALIDATION_LOG" 2>&1; then
-  if [ "$created" = true ]; then rm -f "$CONF_FILE"; fi
-  printf '%s\\n' 'W7_NGINX_VALIDATION_FAILED'
-  cat "$VALIDATION_LOG"
-  echo 'Nginx 配置校验失败，访问入口尚未切换'
-  exit 0
-fi
-cat "$CONF_FILE"`
 }
 
 export function latestNginxTemplateCommand(configFileName) {

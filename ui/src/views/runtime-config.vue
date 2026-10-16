@@ -7,12 +7,9 @@
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon />
     <template v-if="deployment && !loadError">
       <section class="page-card">
-        <header class="card-header"><h2>版本与镜像</h2><p>选择要管理的容器；未修改的配置继续跟随应用更新。</p></header>
+        <header class="card-header"><h2>版本与镜像</h2><p>管理应用主容器，未修改的配置继续跟随应用更新。</p></header>
         <div class="card-body form-grid">
-          <label for="container">应用容器</label>
-          <select id="container" v-model="containerName" :disabled="saving" @change="resetDraft">
-            <option v-for="container in containers" :key="container.name" :value="container.name">{{ container.name }}</option>
-          </select>
+          <span class="field-label">应用容器</span><code>{{ containerName }}</code>
           <span class="field-label">当前镜像</span><code>{{ currentImage }}</code>
           <template v-if="versions.length && imageTemplate">
             <label for="version">应用版本</label>
@@ -100,7 +97,6 @@ export default {
     }
   },
   computed: {
-    containers() { return this.deployment?.spec?.template?.spec?.containers || [] },
     versionChanged() { return !!this.selectedVersion && this.selectedVersion !== this.currentVersion },
     systemDiskPaths() {
       const deploymentAnnotations = this.deployment?.spec?.template?.metadata?.annotations || {}
@@ -163,7 +159,6 @@ export default {
           if (error?.response?.status !== 404) throw error
           this.service = null
         }
-        if (!this.containers.some(item => item.name === this.containerName)) this.containerName = this.containers[0]?.name || ''
         this.resetDraft()
       } catch (error) {
         this.loadError = error?.response?.data?.message || error?.message || '应用信息获取失败'
@@ -172,7 +167,8 @@ export default {
       }
     },
     resetDraft() {
-      const container = this.containers.find(item => item.name === this.containerName)
+      const container = this.deployment?.spec?.template?.spec?.containers?.[0]
+      this.containerName = container?.name || ''
       if (!container) return
       this.currentImage = container.image || ''
       this.currentVersion = this.currentVersionFromImage(this.currentImage)
