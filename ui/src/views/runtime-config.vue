@@ -2,7 +2,7 @@
   <main class="runtime-page" v-loading="loading">
     <header class="page-heading">
       <div><h1>运行配置</h1><p>统一管理应用版本、启动方式和端口，保存后应用会重新启动。</p></div>
-      <el-button :disabled="saving" @click="loadApplication">刷新配置</el-button>
+      <el-button type="primary" class="panel-outline-button" :disabled="saving" @click="loadApplication">刷新配置</el-button>
     </header>
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon />
     <template v-if="deployment && !loadError">
@@ -41,7 +41,7 @@
         </div>
       </section>
       <section class="page-card">
-        <header class="card-header section-heading"><div><h2>端口</h2><p>填写应用实际监听的端口。</p></div><el-button :disabled="saving" @click="addPort">添加端口</el-button></header>
+        <header class="card-header section-heading"><div><h2>端口</h2><p>填写应用实际监听的端口。</p></div><el-button type="primary" class="panel-outline-button" :disabled="saving" @click="addPort">添加端口</el-button></header>
         <div class="card-body">
           <div v-if="!ports.length" class="empty">尚未配置端口。</div>
           <div v-else class="port-list">

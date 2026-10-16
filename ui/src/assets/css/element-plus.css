@@ -37,3 +37,25 @@
   min-height: 0;
   overflow: hidden;
 }
+
+/* Shared outline style for secondary configuration actions. */
+.app-shell .el-button.panel-outline-button {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 15px;
+  border-radius: 2px;
+  font-weight: 400;
+  --el-button-bg-color: transparent;
+  --el-button-text-color: #165dff;
+  --el-button-border-color: #165dff;
+  --el-button-hover-bg-color: transparent;
+  --el-button-hover-text-color: #4080ff;
+  --el-button-hover-border-color: #4080ff;
+  --el-button-active-bg-color: transparent;
+  --el-button-active-text-color: #0e42d2;
+  --el-button-active-border-color: #0e42d2;
+  --el-button-disabled-bg-color: transparent;
+  --el-button-disabled-text-color: #94bfff;
+  --el-button-disabled-border-color: #94bfff;
+}
+.app-shell .el-button.panel-outline-button:focus-visible { outline: 0; box-shadow: 0 0 0 3px #bedaff; }
