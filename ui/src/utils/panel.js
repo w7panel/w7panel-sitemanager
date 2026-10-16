@@ -34,4 +34,14 @@ panelAxios.exec = function (containerName, podName, shell) {
   })
 }
 
+panelAxios.execall = function (containerName, PodNames, shell) {
+  return panelAxios.post('/panel-api/v1/exec-all', {
+    PodNames,
+    containerName,
+    tty: false,
+    namespace: 'default',
+    command: ['sh', '-c', shell]
+  })
+}
+
 export default panelAxios

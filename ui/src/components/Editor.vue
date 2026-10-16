@@ -8,6 +8,7 @@ import { StreamLanguage } from '@codemirror/language'
 import { EditorView, keymap } from '@codemirror/view'
 import { basicSetup } from 'codemirror'
 import { nginx } from '@/assets/js/nginx'
+import { ini } from '@/assets/js/ini'
 
 export default {
   name: 'CodeEditor',
@@ -15,6 +16,10 @@ export default {
     content: {
       type: String,
       default: ''
+    },
+    language: {
+      type: String,
+      default: 'nginx'
     }
   },
   emits: ['update:content'],
@@ -46,7 +51,7 @@ export default {
       extensions: [
         basicSetup,
         theme,
-        StreamLanguage.define(nginx),
+        StreamLanguage.define(this.language === 'ini' ? ini : nginx),
         keymap.of([indentWithTab]),
         EditorView.updateListener.of(update => {
           if (update.docChanged) {

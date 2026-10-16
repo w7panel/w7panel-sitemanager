@@ -1,5 +1,9 @@
 import { createApp } from 'vue'
-import { ElAlert, ElButton, ElDialog, ElLoading, ElMessage } from 'element-plus'
+import {
+  ElAlert, ElButton, ElCheckbox, ElCol, ElDescriptions, ElDescriptionsItem,
+  ElDialog, ElForm, ElFormItem, ElInput, ElInputNumber, ElLoading, ElMessage,
+  ElOption, ElRow, ElSelect, ElSwitch, ElTable, ElTableColumn, ElTabPane, ElTabs
+} from 'element-plus'
 import App from './App.vue'
 import router from './router'
 import './assets/css/element-plus.css'
@@ -13,10 +17,13 @@ let app = null
 function createNginxApp() {
   const nextApp = createApp(App)
   nextApp.use(router)
-  nextApp.use(ElAlert)
-  nextApp.use(ElButton)
-  nextApp.use(ElDialog)
-  nextApp.use(ElLoading)
+  const components = [
+    ElAlert, ElButton, ElDialog, ElLoading,
+    ElCheckbox, ElCol, ElDescriptions, ElDescriptionsItem, ElForm, ElFormItem,
+    ElInput, ElInputNumber, ElOption, ElRow, ElSelect, ElSwitch,
+    ElTable, ElTableColumn, ElTabPane, ElTabs
+  ]
+  components.forEach(component => nextApp.use(component))
   nextApp.config.globalProperties.$message = ElMessage
   return nextApp
 }

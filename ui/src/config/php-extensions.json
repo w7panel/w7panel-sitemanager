@@ -1,0 +1,691 @@
+{
+  "php_perpetual_extensions": "",
+  "template": {
+    "description": "$extension_name",
+    "install_command": "log_file=/tmp/install-php-extensions.log; : >\"$log_file\"; { if [ ! -x /usr/local/bin/install-php-extensions ]; then curl -fsSL \"https://ghfast.top/https://github.com/mlocati/docker-php-extension-installer/releases/latest/download/install-php-extensions\" -o /usr/local/bin/install-php-extensions && chmod +x /usr/local/bin/install-php-extensions; fi && install-php-extensions $extension_name; } >>\"$log_file\" 2>&1 ; rm -f \"$log_file\" ; kill -USR2 1",
+    "uninstall_command": "rm -f \"$(php-config --extension-dir)/$extension_name.so\" && rm /usr/local/etc/php/conf.d/docker-php-ext-$extension_name.ini && kill -USR2 1",
+    "enable_command": "ini_file=\"/usr/local/etc/php/conf.d/docker-php-ext-$extension_name.ini\" && { [ ! -f \"$ini_file\" ] && { [ \"$extension_name\" = \"opcache\" ] || [ \"$extension_name\" = \"xdebug\" ] || [ \"$extension_name\" = \"ioncube_loader\" ] && echo \"zend_extension=$extension_name.so\" > \"$ini_file\" || echo \"extension=$extension_name.so\" > \"$ini_file\"; }; } ; sed -i 's/^;\\(.*extension.*$extension_name.*\\)/\\1/' \"$ini_file\" && kill -USR2 1",
+    "disable_command": "sed -i 's/^\\(.*extension.*$extension_name.*\\)/;\\1/' /usr/local/etc/php/conf.d/docker-php-ext-$extension_name.ini  && kill -USR2 1",
+    "not_support_php_versions": []
+  },
+  "extensions": [
+    {
+      "name": "amqp",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "apcu_bc",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "ast",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "bitset",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "blackfire",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "brotli",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "calendar",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "cassandra",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "cmark",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "csv",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "dba",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "ddtrace",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "decimal",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "ds",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "ecma_intl",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4",
+        "8.0",
+        "8.1",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "enchant",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "ev",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "event",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "excimer",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "ffi",
+      "not_support_php_versions": [
+        "7.3"
+      ]
+    },
+    {
+      "name": "gearman",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "geoip",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "geos",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "geospatial",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "gettext",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "gmagick",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "gmp",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "gnupg",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "grpc",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "http",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "imap",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "inotify",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "interbase",
+      "not_support_php_versions": [
+        "7.4",
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "intl",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "ion",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4",
+        "8.0"
+      ]
+    },
+    {
+      "name": "ip2location",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4"
+      ]
+    },
+    {
+      "name": "jsmin",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "json_post",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "jsonpath",
+      "not_support_php_versions": [
+        "7.3"
+      ]
+    },
+    {
+      "name": "ldap",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "luasandbox",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "lz4",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "lzf",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "mailparse",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "maxminddb",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "md4c",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4"
+      ]
+    },
+    {
+      "name": "memcache",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "memprof",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "mongodb",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "mosquitto",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "msgpack",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "newrelic",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "nsq",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "oauth",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "oci8",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "odbc",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "opencensus",
+      "not_support_php_versions": [
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "openswoole",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "opentelemetry",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4"
+      ]
+    },
+    {
+      "name": "operator",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4",
+        "8.0",
+        "8.1"
+      ]
+    },
+    {
+      "name": "parallel",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "parle",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "pcov",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pdo_dblib",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pdo_firebird",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pdo_oci",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pdo_odbc",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pdo_pgsql",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pdo_snowflake",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4",
+        "8.0",
+        "8.5"
+      ]
+    },
+    {
+      "name": "pdo_sqlsrv",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "pgsql",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "phalcon",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "php_trie",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "phpy",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4",
+        "8.0"
+      ]
+    },
+    {
+      "name": "pkcs11",
+      "not_support_php_versions": [
+        "7.3"
+      ]
+    },
+    {
+      "name": "pq",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "propro",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "protobuf",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pspell",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "psr",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "pthreads",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4",
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "raphf",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "rdkafka",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "recode",
+      "not_support_php_versions": [
+        "7.4",
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "relay",
+      "not_support_php_versions": [
+        "7.3"
+      ]
+    },
+    {
+      "name": "seasclick",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "seaslog",
+      "not_support_php_versions": [
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "shmop",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "simdjson",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "smbclient",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "snappy",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "snmp",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "snuffleupagus",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "soap",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "solr",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "spx",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "sqlsrv",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "ssh2",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "stomp",
+      "not_support_php_versions": [
+        "8.0",
+        "8.1",
+        "8.5"
+      ]
+    },
+    {
+      "name": "sync",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "tensor",
+      "not_support_php_versions": [
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "tideways",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "tidy",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "timezonedb",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "translit",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "uopz",
+      "not_support_php_versions": [
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "uploadprogress",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "uuid",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "uv",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4"
+      ]
+    },
+    {
+      "name": "vips",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "vld",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "wddx",
+      "not_support_php_versions": [
+        "7.4",
+        "8.0",
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4",
+        "8.5"
+      ]
+    },
+    {
+      "name": "wikidiff2",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xattr",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xdebug",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xdiff",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xhprof",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xlswriter",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xmldiff",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xmlrpc",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "xpass",
+      "not_support_php_versions": [
+        "7.3",
+        "7.4"
+      ]
+    },
+    {
+      "name": "yac",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "yar",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "zephir_parser",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "zmq",
+      "not_support_php_versions": [
+        "8.5"
+      ]
+    },
+    {
+      "name": "zookeeper",
+      "not_support_php_versions": []
+    },
+    {
+      "name": "zstd",
+      "not_support_php_versions": []
+    }
+  ]
+}
