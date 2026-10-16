@@ -4,8 +4,8 @@
         <template v-if="podName && !loadError">
             <div>
                 <div class="df" style="overflow: hidden;margin: 20px 20px 20px 0;">
-                    <div class="w-200">
-                        <el-tabs style="height: 100%" tab-position="left" @tab-change="handleTabChange" v-model="tab">
+                    <div class="environment-navigation">
+                        <el-tabs class="environment-tabs" style="height: 100%" tab-position="left" @tab-change="handleTabChange" v-model="tab">
                             <template v-if="isPHP">
                                 <el-tab-pane name="extensions" label="安装扩展"></el-tab-pane>
                                 <el-tab-pane name="fpm" label="FPM配置"></el-tab-pane>
@@ -1217,9 +1217,10 @@ export default {
 </script>
 <style scoped>
 .environment-page {
+    --el-color-primary: #0052D9;
+    --el-font-weight-primary: normal;
     box-sizing: border-box;
     min-height: 100%;
-    padding: 20px;
     background: #fff;
 }
 
@@ -1231,9 +1232,19 @@ export default {
     justify-content: center;
 }
 
-.w-200 {
-    width: 200px;
+.environment-navigation {
     flex-shrink: 0;
+}
+
+/* These tabs only provide navigation; their panels render alongside them. */
+.environment-navigation :deep(.environment-tabs > .el-tabs__content) {
+    display: none;
+}
+
+.environment-page :deep(.el-button.el-button--primary:hover),
+.environment-page :deep(.el-button.el-button--primary:focus) {
+    background-color: var(--el-color-primary);
+    border-color: var(--el-color-primary);
 }
 
 .loading-icon {
