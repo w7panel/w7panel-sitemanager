@@ -1,14 +1,17 @@
 <template>
   <main class="nginx-page" v-loading="loading">
     <section v-if="gatewayManaged || gatewayError" class="page-card gateway-card">
-      <div><h2>网关转发</h2><p>{{ gatewayEnabled ? '已开启，应用通过 Nginx 网关访问。' : gatewayEditing ? '请先确认下方 Nginx 配置，保存并校验通过后才会切换访问入口。' : '尚未开启。请先配置 Nginx，再开启网关转发。' }}</p></div>
+      <div><h2>网关转发</h2><p>{{ gatewayEnabled ? '已开启，应用通过 Nginx 网关访问。' : gatewayEditing ? '请先确认下方 Nginx 配置，保存并校验通过后才会切换访问入口。' : '尚未开启。点击“配置并开启网关”查看并编辑 Nginx 配置，确认后点击“保存配置并开启”。' }}</p></div>
       <el-button v-if="gatewayManaged && !gatewayEditing" :type="gatewayEnabled ? 'danger' : 'primary'" :plain="gatewayEnabled" :loading="gatewayBusy" :disabled="loading || saveLoading" @click="gatewayEnabled ? switchGateway(false) : prepareGateway()">{{ gatewayEnabled ? '关闭网关转发' : '配置并开启网关' }}</el-button>
     </section>
     <el-alert v-if="gatewayError" class="template-notice" type="error" :closable="false" show-icon :title="gatewayValidationFailed ? 'Nginx 配置校验失败，请修改后重试' : gatewayError">
       <pre v-if="gatewayEditing" class="gateway-error-detail">{{ gatewayError }}</pre>
       <el-button v-if="gatewayRetry !== null && !gatewayEditing" size="small" :loading="gatewayBusy" @click="gatewayRetry && !gatewayEnabled ? prepareGateway() : switchGateway(gatewayRetry)">重试{{ gatewayRetry ? '开启' : '关闭' }}</el-button>
     </el-alert>
-    <p v-if="gatewayBusy" class="gateway-progress">{{ gatewayPhase }}</p>
+    <div v-if="gatewayBusy" class="gateway-progress" role="status" aria-live="polite">
+      <span class="gateway-progress-spinner" aria-hidden="true"></span>
+      <span>{{ gatewayPhase || '正在处理网关配置，请稍候…' }}</span>
+    </div>
     <el-alert v-if="(gatewayEnabled || (gatewayEditing && gatewayConfigExists)) && latestTemplateDiffers" class="template-notice" type="warning" :closable="false" show-icon
       title="应用最新模板与当前生效配置不同"
       description="升级已保留你的配置。可查看最新模板，将需要的内容合并到下方配置后再应用。" />
@@ -338,7 +341,11 @@ export default {
 .gateway-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 24px; margin-bottom: 16px; }
 .gateway-error-detail { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; }
 .gateway-card h2 { margin: 0; color: #1d2129; font-size: 16px; }
-.gateway-card p, .gateway-progress { color: #86909c; font-size: 13px; line-height: 1.7; }
+.gateway-card p { color: #86909c; font-size: 13px; line-height: 1.7; }
+.gateway-progress { display: flex; align-items: center; gap: 12px; box-sizing: border-box; margin: 0 0 16px; padding: 16px 24px; border: 1px solid #d6e4ff; border-radius: 6px; background: #f0f5ff; color: #1d2129; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.gateway-progress-spinner { flex: 0 0 auto; box-sizing: border-box; width: 16px; height: 16px; border: 2px solid #bedaff; border-top-color: #165dff; border-radius: 50%; animation: gateway-progress-spin 0.8s linear infinite; }
+@keyframes gateway-progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .gateway-progress-spinner { animation: none; } }
 .template-notice { margin-bottom: 16px; }
 .heading-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .template-help { margin: 0 0 16px; color: #4e5969; line-height: 1.7; }
