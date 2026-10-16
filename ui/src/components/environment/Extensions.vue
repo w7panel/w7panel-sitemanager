@@ -1,6 +1,6 @@
 <template>
     <div style="position: relative;display: flex;flex-direction: column;height: 500px;">
-        <el-table ref="extensionsTable" style="flex: 1; overflow-y: auto;" :data="extensions" class="table-header"
+        <el-table ref="extensionsTable" height="100%" style="flex: 1; min-height: 0;" :data="extensions" class="table-header"
             @selection-change="handleSelectionChange">
             <el-table-column type="selection" width="45" :selectable="isSelectableInstallExtension"></el-table-column>
             <el-table-column prop="name" label="名称"></el-table-column>
@@ -28,7 +28,7 @@
                 </template>
             </el-table-column>
         </el-table>
-        <div class="df jc-c" style="margin-top: 20px">
+        <div class="df jc-c" style="margin-top: 20px; flex-shrink: 0;">
             <el-button v-if="showInstallLog" type="text" @click="$emit('viewInstallLog')">查看日志</el-button>
             <el-button type="primary" @click="installSelectedExtensions"
                 :disabled="!selectedInstallExtensions.length || operationLoading"
