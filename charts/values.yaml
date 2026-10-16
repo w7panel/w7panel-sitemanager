@@ -1,5 +1,8 @@
 replicaCount: 1
 
+# Keep explicitly marked container fields and Service ports changed by the tool.
+preserveRuntimeConfig: true
+
 # Run the NGINX gateway. When disabled, the Deployment uses a pause placeholder
 # image and does not expose ports. Service creation is controlled separately.
 gatewayEnabled: false

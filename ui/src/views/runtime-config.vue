@@ -369,7 +369,7 @@ export default {
         if (this.versionChanged && !this.versions.includes(this.selectedVersion)) throw new Error('请选择支持的版本')
         const startup = resolveStartup(this.startup)
         plan = buildRuntimePlan(this.deployment, this.service, {
-          containerName: this.containerName, command: JSON.stringify(startup.command), args: JSON.stringify(startup.args),
+          containerName: this.containerName, command: startup.command, args: startup.args,
           ports: this.ports.map(port => ({ ...port, servicePort: port.mapped ? port.servicePort : port.containerPort })),
           image: this.versionChanged ? this.buildImage(this.selectedVersion) : '',
           version: this.selectedVersion

@@ -1,5 +1,14 @@
 <template>
   <main class="nginx-page" v-loading="loading">
+    <section v-if="gatewayManaged || gatewayError" class="page-card gateway-card">
+      <div><h2>网关转发</h2><p>{{ gatewayEnabled ? '已开启，应用通过 Nginx 网关访问。' : '尚未开启。开启时优先使用已有配置，文件缺失时自动生成常用配置。' }}</p></div>
+      <el-button v-if="gatewayManaged && !gatewayRecovery" :type="gatewayEnabled ? 'default' : 'primary'" :loading="gatewayBusy" :disabled="loading || saveLoading" @click="switchGateway(!gatewayEnabled)">{{ gatewayEnabled ? '关闭网关转发' : '开启网关转发' }}</el-button>
+    </section>
+    <el-alert v-if="gatewayError" class="template-notice" type="error" :closable="false" show-icon :title="gatewayRecovery ? 'Nginx 配置校验失败，请修改后重试' : gatewayError">
+      <pre v-if="gatewayRecovery" class="gateway-error-detail">{{ gatewayError }}</pre>
+      <el-button v-if="gatewayRetry !== null && !gatewayRecovery" size="small" :loading="gatewayBusy" @click="switchGateway(gatewayRetry)">重试{{ gatewayRetry ? '开启' : '关闭' }}</el-button>
+    </el-alert>
+    <p v-if="gatewayBusy" class="gateway-progress">{{ gatewayPhase }}</p>
     <el-alert v-if="latestTemplateDiffers" class="template-notice" type="warning" :closable="false" show-icon
       title="应用最新模板与当前生效配置不同"
       description="升级已保留你的配置。可查看最新模板，将需要的内容合并到下方配置后再应用。" />
@@ -11,13 +20,13 @@
           <h1>Nginx 配置</h1>
           <el-button v-if="latestNginxConfig !== null" @click="latestDialogVisible = true">查看最新模板</el-button>
         </div>
-        <p>编辑默认域名对应的站点配置，保存前会自动校验 Nginx 语法。</p>
+        <p>{{ gatewayRecovery ? '已读取存储中的实际配置，请根据错误提示修改，保存后将重新校验并继续开启网关。' : gatewayEnabled ? '编辑默认域名对应的站点配置，应用时自动校验 Nginx 语法，失败会恢复原文件。' : '下方是工具生成的常用配置，可按需调整；开启时仅用于创建缺失的文件，已有配置优先使用。' }}</p>
       </header>
-      <Editor v-model:content="nginxConfig" />
+      <div :inert="gatewayBusy || saveLoading ? '' : null"><Editor v-model:content="nginxConfig" /></div>
     </section>
-    <div class="actions">
-      <el-button size="large" type="primary" :loading="saveLoading" @click="nginxSave">
-        应用
+    <div v-if="gatewayEnabled || gatewayRecovery" class="actions">
+      <el-button size="large" type="primary" :loading="saveLoading || gatewayBusy" :disabled="loading" @click="gatewayRecovery ? switchGateway(true, true) : nginxSave()">
+        {{ gatewayRecovery ? '保存配置并继续开启' : '应用' }}
       </el-button>
     </div>
     <el-dialog v-model="latestDialogVisible" title="应用最新 Nginx 模板" width="min(1000px, 94vw)">
@@ -31,9 +40,10 @@
 <script>
 import Editor from '@/components/Editor.vue'
 import panelAxios from '@/utils/panel'
+import { ElMessageBox } from 'element-plus'
+import { GatewayController, GATEWAY_CONTAINERS } from '@/utils/gateway-config'
+import { normalizeNginxConfig, latestNginxTemplateCommand, requireNginxConfigFileCommand, saveNginxConfigCommand, checkNginxValidation } from '@/utils/nginx-config'
 
-const NGINX_CONF_DIR = '/www/server/nginx/conf.d'
-const NGINX_TEMPLATE_DIR = '/www/server/nginx/template-configs'
 const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
 const DEFAULT_DOMAIN_ANNOTATION = 'w7.cc/default-domain'
 
@@ -48,42 +58,88 @@ export default {
       appliedNginxConfig: '',
       latestNginxConfig: null,
       latestTemplateError: '',
-      latestDialogVisible: false
+      latestDialogVisible: false,
+      gatewayManaged: false,
+      gatewayEnabled: true,
+      gatewayBusy: false,
+      gatewayPhase: '',
+      gatewayError: '',
+      gatewayRetry: null,
+      gatewayRecovery: false
     }
   },
   computed: {
     latestTemplateDiffers() {
       return this.latestNginxConfig !== null
-        && this.normalizeNginxConfig(this.latestNginxConfig) !== this.normalizeNginxConfig(this.appliedNginxConfig)
+        && normalizeNginxConfig(this.latestNginxConfig) !== normalizeNginxConfig(this.appliedNginxConfig)
     }
   },
-  created() {
-    this.loadNginxConfig()
+  async created() {
+    await this.initializeGateway()
+    if (this.gatewayEnabled) await this.loadNginxConfig()
+    else this.loading = false
   },
   methods: {
-    normalizeNginxConfig(content) {
-      const lines = String(content).split('\n')
-      if (lines[lines.length - 1] === '') lines.pop()
-      const kept = []
-      let quote = ''
-      let escaped = false
-      for (const rawLine of lines) {
-        const line = rawLine.replace(/\r$/, '')
-        if (/^[ \t]*$/.test(line) && !quote && !escaped) continue
-        kept.push(line)
-        escaped = false
-        for (const char of line) {
-          if (escaped) { escaped = false; continue }
-          if (char === '\\') { escaped = true; continue }
-          if (quote) {
-            if (char === quote) quote = ''
-            continue
-          }
-          if (char === '#') break
-          if (char === '"' || char === "'") quote = char
+    async initializeGateway() {
+      try {
+        const name = this.getNginxDeploymentName()
+        if (!name) return
+        const tool = (await panelAxios.get(`/apis/apps/v1/namespaces/default/deployments/${encodeURIComponent(name)}`)).data
+        this.gatewayEnabled = !/(^|\/)pause(?::|@|$)/.test(tool.spec?.template?.spec?.containers?.[0]?.image || '')
+        if (!tool.metadata?.annotations?.[GATEWAY_CONTAINERS]) {
+          if (!this.gatewayEnabled) this.gatewayError = '当前版本暂不支持开启网关，请先升级 tradition-tool Chart。'
+          return
         }
+        this.gatewayController = new GatewayController(panelAxios, {
+          group: this.getAppgroupName(), toolName: name,
+          onPhase: phase => { this.gatewayPhase = phase }
+        })
+        const state = await this.gatewayController.load()
+        this.gatewayManaged = true
+        this.gatewayEnabled = state.config.enabled
+        if (!this.gatewayEnabled) this.nginxConfig = state.initialNginxConfig
+      } catch (error) {
+        this.gatewayError = error?.response?.data?.error || error.message || '网关状态读取失败'
       }
-      return kept.join('\n')
+    },
+    async switchGateway(enabled, repairConfig = false) {
+      if (this.gatewayBusy || this.saveLoading || !this.gatewayController) return
+      if (repairConfig && !this.nginxConfig.trim()) { this.$message.warning('Nginx配置不能为空'); return }
+      try {
+        await ElMessageBox.confirm(repairConfig
+          ? '将保存编辑后的站点配置，校验通过后继续开启网关；校验失败会恢复原文件。'
+          : enabled
+          ? '将启动 Nginx 网关并切换应用访问入口。已有配置会保留，新配置仅用于初始化缺失的文件。'
+          : '将关闭 Nginx 网关，并将访问入口切回应用。请确认应用本身支持直接访问。',
+        enabled ? '开启网关转发' : '关闭网关转发', { type: 'warning', confirmButtonText: '确认', cancelButtonText: '取消' })
+      } catch { return }
+      if (this.gatewayBusy || this.saveLoading) return
+      this.gatewayBusy = true
+      this.gatewayError = ''
+      this.gatewayRetry = enabled
+      try {
+        const state = await this.gatewayController.switch(enabled, this.nginxConfig, { repairConfig })
+        this.gatewayEnabled = state.config.enabled
+        this.gatewayRetry = null
+        this.gatewayRecovery = false
+        if (enabled) await this.loadNginxConfig()
+        this.$message.success(enabled ? '网关转发已开启' : '网关转发已关闭')
+      } catch (error) {
+        if (error.nginxRecovery) {
+          this.gatewayRecovery = true
+          this.gatewayEnabled = false
+          this.appliedNginxConfig = error.nginxRecovery.content
+          if (!error.nginxRecovery.preserveDraft) this.nginxConfig = error.nginxRecovery.content
+          const { containerName, podName, fileName } = error.nginxRecovery
+          await this.loadLatestTemplate(containerName, podName, fileName)
+        } else if (repairConfig && (error.nginxConfigSaved || error.nginxRecoveryUnavailable)) {
+          this.gatewayRecovery = false
+          const state = await this.gatewayController.load().catch(() => null)
+          if (state) this.gatewayEnabled = state.config.enabled
+        }
+        this.gatewayError = error.message
+        this.$message.error(error.message)
+      } finally { this.gatewayBusy = false; this.gatewayPhase = '' }
     },
     getAppgroupName() {
       return window.$wujie?.props?.group || window.$wujie?.props?.appgroup || ''
@@ -147,51 +203,11 @@ export default {
       }
       throw new Error('Nginx 容器尚未运行，暂时无法读取或保存配置。请先恢复容器运行后重试')
     },
-    getConfFileCommand(configFileName) {
-      return `set -eu
-CONF_DIR='${NGINX_CONF_DIR}'
-[ -d "$CONF_DIR" ] || { echo "Nginx 配置目录不存在: $CONF_DIR" >&2; exit 1; }
-CONF_FILE="$CONF_DIR/${configFileName}"
-[ -f "$CONF_FILE" ] || { echo "未找到默认域名对应的 Nginx 配置文件: $CONF_FILE" >&2; exit 1; }`
-    },
-    buildSaveCommand(content, configFileName) {
-      const text = content === undefined || content === null ? '' : String(content)
-      let marker = 'W7_NGINX_EOF'
-      let index = 0
-      while (text.includes(marker)) {
-        index += 1
-        marker = `W7_NGINX_EOF_${index}`
-      }
-
-      return `${this.getConfFileCommand(configFileName)}
-TMP_FILE="/tmp/w7-nginx-conf.$$"
-BACKUP_FILE="/tmp/w7-nginx-conf-backup.$$"
-cleanup() { rm -f "$TMP_FILE" "$BACKUP_FILE"; }
-trap cleanup EXIT HUP INT TERM
-cat <<'${marker}' > "$TMP_FILE"
-${text}
-${marker}
-cp -p "$CONF_FILE" "$BACKUP_FILE"
-mv "$TMP_FILE" "$CONF_FILE"
-if ! nginx -t; then
-  mv "$BACKUP_FILE" "$CONF_FILE"
-  echo 'Nginx 配置校验失败，已恢复原配置' >&2
-  exit 1
-fi
-rm -f "$BACKUP_FILE"
-trap - EXIT HUP INT TERM`
-    },
-    buildLatestTemplateCommand(configFileName) {
-      const file = `${NGINX_TEMPLATE_DIR}/${configFileName}`.replaceAll("'", "'\"'\"'")
-      return `set -eu
-LATEST_FILE='${file}'
-if [ -f "$LATEST_FILE" ]; then cat "$LATEST_FILE"; fi`
-    },
     async loadLatestTemplate(containerName, podName, configFileName) {
       this.latestNginxConfig = null
       this.latestTemplateError = ''
       try {
-        const response = await panelAxios.exec(containerName, podName, this.buildLatestTemplateCommand(configFileName))
+        const response = await panelAxios.exec(containerName, podName, latestNginxTemplateCommand(configFileName))
         const content = String(response.data ?? '')
         // Older charts do not publish a template. Valid generated templates are nonempty.
         this.latestNginxConfig = content.length ? content : null
@@ -223,7 +239,7 @@ if [ -f "$LATEST_FILE" ]; then cat "$LATEST_FILE"; fi`
             const response = await panelAxios.exec(
               containerName,
               podName,
-              `${this.getConfFileCommand(configFileName)}\ncat "$CONF_FILE"`
+              `${requireNginxConfigFileCommand(configFileName)}\ncat "$CONF_FILE"`
             )
             this.nginxConfig = String(response.data ?? '')
             this.appliedNginxConfig = this.nginxConfig
@@ -243,6 +259,7 @@ if [ -f "$LATEST_FILE" ]; then cat "$LATEST_FILE"; fi`
       }
     },
     async nginxSave() {
+      if (this.gatewayBusy || this.saveLoading || !this.gatewayEnabled) return
       if (!this.getNginxDeploymentName()) {
         this.$message.error('未获取到 Nginx Deployment 名称')
         return
@@ -263,11 +280,12 @@ if [ -f "$LATEST_FILE" ]; then cat "$LATEST_FILE"; fi`
           this.getNginxContainer(),
           this.getNginxConfigFileName()
         ])
-        await panelAxios.exec(
+        const response = await panelAxios.exec(
           containerName,
           podName,
-          this.buildSaveCommand(content, configFileName)
+          saveNginxConfigCommand(content, configFileName)
         )
+        checkNginxValidation(response?.data)
         await this.reload()
         this.appliedNginxConfig = content
         this.$message.success('操作成功')
@@ -300,6 +318,10 @@ if [ -f "$LATEST_FILE" ]; then cat "$LATEST_FILE"; fi`
 .nginx-page {
   box-sizing: border-box;
 }
+.gateway-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 24px; margin-bottom: 16px; }
+.gateway-error-detail { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; }
+.gateway-card h2 { margin: 0; color: #1d2129; font-size: 16px; }
+.gateway-card p, .gateway-progress { color: #86909c; font-size: 13px; line-height: 1.7; }
 .template-notice { margin-bottom: 16px; }
 .heading-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .template-help { margin: 0 0 16px; color: #4e5969; line-height: 1.7; }

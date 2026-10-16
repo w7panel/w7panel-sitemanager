@@ -1,3 +1,23 @@
+{{- $runtime := include "tradition-tool.runtimeConfig" . | fromJson -}}
+{{- $container := include "tradition-tool.gatewayContainer" (dict "root" . "enabled" (eq (include "tradition-tool.gatewayEnabled" .) "true")) | fromYaml -}}
+{{- $toolPort := .Values.service.port -}}
+{{- if $runtime.service -}}
+  {{- range $port := $runtime.service.ports -}}
+    {{- if and (eq (default "TCP" $port.protocol) "TCP") (eq (default "" $port.name) "http") -}}
+      {{- $toolPort = $port.port -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+{{- $existing := get $runtime.containers $container.name -}}
+{{- if $existing -}}
+  {{- range $field := get $runtime.selection.containers $container.name -}}
+    {{- if hasKey $existing $field -}}
+      {{- $_ := set $container $field (get $existing $field) -}}
+    {{- else -}}
+      {{- $_ := unset $container $field -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -8,6 +28,14 @@ metadata:
     title: 传统应用工具
     w7.cc.app/title: 传统应用工具
     w7.cc/create-svc: 'false'
+    {{/* 工具自行声明网关能力与自身 Service；主应用和直连端口由 UI 查询 AppGroup、Service。 */}}
+    w7.cc/tradition-gateway: {{ dict "toolService" (include "tradition-tool.fullname" .) "toolPort" $toolPort | toJson | quote }}
+    {{/* 两份发布配置用于切换 nginx/pause；当前状态由工具实际运行的容器配置体现。 */}}
+    w7.cc/tradition-gateway-containers: {{ dict "enabled" (include "tradition-tool.gatewayContainer" (dict "root" . "enabled" true) | fromYaml) "disabled" (include "tradition-tool.gatewayContainer" (dict "root" . "enabled" false) | fromYaml) | toJson | quote }}
+    {{/* 升级时仅沿用工具自身标记的运行配置，未标记字段继续跟随新版 Chart。 */}}
+    {{- if $runtime.selection }}
+    w7.cc/tradition-runtime-config: {{ $runtime.selection | toJson | quote }}
+    {{- end }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
@@ -35,62 +63,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: tradition-tool
-          securityContext:
-            {{- toYaml .Values.securityContext | nindent 12 }}
-          {{- if eq (include "tradition-tool.gatewayEnabled" .) "true" }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          command: [ "sh", "-c" ]
-          args:
-            - |
-              CONF_PATH="{{.Values.global.NGINX_DIR}}/conf.d"
-              NGINX_CONF="/etc/nginx/nginx.conf"
-              mkdir -p "$CONF_PATH"
-
-              DEFAULT_WORKER=2
-              HOST_CPU=$(grep -c '^processor' /proc/cpuinfo)
-              FINAL_WORKER=${NGINX_WORKER_PROCESSES:-$DEFAULT_WORKER}
-              [ "$FINAL_WORKER" -eq "$HOST_CPU" ] && FINAL_WORKER=$DEFAULT_WORKER
-              sed -i "s/\(worker_processes\).*;/\1 $FINAL_WORKER;/" "$NGINX_CONF"
-
-              grep -q "include $CONF_PATH/\*.conf;" "$NGINX_CONF" || \
-              sed -i "/include \/etc\/nginx\/conf.d\/\*.conf;/a\    include $CONF_PATH/*.conf;" "$NGINX_CONF"
-
-              nginx -g 'daemon off;'
-          env:
-            - name: NGINX_WORKER_PROCESSES
-              valueFrom:
-                resourceFieldRef:
-                  resource: limits.cpu
-                  divisor: '1'
-          volumeMounts:
-            - mountPath: {{.Values.global.NGINX_DIR}}
-              name: site-storage
-              subPath: nginx-dir
-            - mountPath: {{.Values.global.NGINX_WEB_DIR}}
-              name: site-storage
-              subPath: nginx-web-dir
-          ports:
-            - name: http
-              containerPort: 80
-              protocol: TCP
-            - name: https
-              containerPort: 443
-              protocol: TCP
-          {{- else }}
-          image: "{{ .Values.placeholderImage.repository }}:{{ .Values.placeholderImage.tag }}"
-          imagePullPolicy: {{ .Values.placeholderImage.pullPolicy | default "IfNotPresent" }}
-          volumeMounts:
-            - mountPath: {{ .Values.global.NGINX_DIR }}
-              name: site-storage
-              subPath: nginx-dir
-            - mountPath: {{ .Values.global.NGINX_WEB_DIR }}
-              name: site-storage
-              subPath: nginx-web-dir
-          {{- end }}
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+        - {{ $container | toYaml | nindent 10 | trim }}
       volumes:
         - name: site-storage
           persistentVolumeClaim:
