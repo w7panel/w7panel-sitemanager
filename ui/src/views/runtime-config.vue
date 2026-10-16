@@ -1,6 +1,6 @@
 <template>
   <main class="runtime-page" v-loading="loading">
-    <header class="page-heading">
+    <header class="page-heading page-card">
       <div><h1>运行配置</h1><p>统一管理应用版本、启动方式和端口，保存后应用会重新启动。</p></div>
       <el-button type="primary" class="panel-outline-button" :disabled="saving" @click="loadApplication">刷新配置</el-button>
     </header>
@@ -435,15 +435,17 @@ export default {
 </script>
 
 <style scoped>
-.runtime-page { box-sizing: border-box; display: grid; gap: 18px; max-width: 1120px; margin: 0 auto; padding: 8px 0 32px; }
+.runtime-page { box-sizing: border-box; display: grid; gap: 16px; width: 100%; min-width: 0; margin: 0; padding-bottom: 32px; }
 .page-heading, .section-heading, .save-bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-h1 { margin: 0; color: #1d2129; font-size: 22px; font-weight: 600; }
+.page-heading { padding: 20px 24px; }
+h1 { margin: 0; color: #1d2129; font-size: 18px; font-weight: 600; }
 h2 { margin: 0; color: #1d2129; font-size: 16px; font-weight: 600; }
 .page-heading p, .card-header p, .save-bar p { margin: 8px 0 0; color: #86909c; font-size: 13px; line-height: 1.6; }
-.page-card { background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; overflow: hidden; }
-.card-header { padding: 20px 24px 16px; border-bottom: 1px solid #f2f3f5; }
+.page-card { background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); overflow: hidden; }
+.card-header { padding: 22px 24px 16px; border-bottom: 1px solid #f2f3f5; }
 .card-body { padding: 24px; }
-.form-grid { display: grid; grid-template-columns: 126px minmax(0, 1fr); gap: 18px 20px; align-items: start; }
+.form-grid { display: grid; grid-template-columns: 126px minmax(0, 720px); gap: 18px 20px; align-items: start; }
+.form-grid > * { min-width: 0; }
 .form-grid label, .field-label { padding-top: 8px; color: #4e5969; }
 code { box-sizing: border-box; display: inline-block; max-width: 100%; padding: 7px 10px; color: #1d2129; background: #f7f8fa; border-radius: 4px; word-break: break-all; white-space: pre-wrap; }
 .path-list { display: grid; gap: 6px; }
@@ -459,13 +461,13 @@ input:disabled, select:disabled, textarea:disabled { background: #f7f8fa; color:
 .startup-options { display: flex; flex-wrap: wrap; gap: 16px 28px; }
 .startup-option { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: #4e5969; }
 .startup-option input { width: 16px; height: 16px; margin: 0; accent-color: #165dff; }
-.startup-command { display: grid; gap: 10px; margin-top: 20px; }
+.startup-command { display: grid; gap: 10px; width: 100%; max-width: 720px; min-width: 0; margin-top: 20px; }
 .startup-command > label { color: #4e5969; }
 .port-list { display: grid; gap: 12px; max-width: 540px; }
-.port-row { display: grid; grid-template-columns: 80px minmax(120px, 240px) auto; align-items: center; gap: 16px; }
+.port-row { display: grid; grid-template-columns: 80px minmax(0, 380px) auto; align-items: center; gap: 16px; }
 .port-row label { color: #4e5969; }
 .save-bar { position: sticky; bottom: 24px; padding: 18px 24px; background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; box-shadow: 0 -4px 16px rgb(0 0 0 / 3%); }
 .save-bar strong { color: #1d2129; font-size: 14px; font-weight: 500; }
 :deep(.el-button) { border-radius: 4px; --el-color-primary: #165dff; }
-@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; gap: 8px; } .form-grid label { margin-top: 8px; } .card-body, .card-header { padding: 16px; } .page-heading, .section-heading, .save-bar { align-items: flex-start; flex-direction: column; gap: 12px; } .save-bar :deep(.el-button) { width: 100%; } }
+@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; gap: 8px; } .form-grid label { margin-top: 8px; } .page-heading, .card-body, .card-header { padding: 16px; } .page-heading, .section-heading, .save-bar { align-items: flex-start; flex-direction: column; gap: 12px; } .save-bar :deep(.el-button) { width: 100%; } }
 </style>

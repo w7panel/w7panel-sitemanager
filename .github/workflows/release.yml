@@ -13,6 +13,7 @@ jobs:
     env:
       ZPK_HOST: zpk.w7.cc
       ZPK_ARTIFACT: w7-traditiontool
+      ZPK_FRONTEND_ARTIFACT: w7-phptool
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,5 +88,13 @@ jobs:
           zpk login --username="${ZPK_DOCKER_USERNAME}" --password="${ZPK_DOCKER_PASSWORD}" --host="${ZPK_HOST}"
           zpk use "${ZPK_ARTIFACT}"
           zpk attach add --path="${HELM_PACKAGE}" --type=helm
+          zpk attach add --path="frontend.zip" --type=frontend
+          zpk push
+
+      - name: Push frontend to w7-phptool
+        run: |
+          set -euo pipefail
+
+          zpk use "${ZPK_FRONTEND_ARTIFACT}"
           zpk attach add --path="frontend.zip" --type=frontend
           zpk push
