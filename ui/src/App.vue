@@ -45,14 +45,35 @@ export default {
 </script>
 
 <style>
+/* Wujie renders inside a transformed, scrollable host. Keep scrolling in the
+   application so fixed modal masks cannot be scrolled out of that host. */
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
 html,
 body,
 #nginx {
   width: 100%;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   margin: 0;
   font-size: 14px;
   color: #1d2129;
   -webkit-font-smoothing: antialiased;
+}
+.app-shell {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+/* Dialog and MessageBox use different body classes to lock background scroll. */
+.el-popup-parent--hidden .app-shell,
+.el-message-box-parent--hidden .app-shell {
+  overflow: hidden;
 }
 </style>

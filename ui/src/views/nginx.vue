@@ -2,7 +2,7 @@
   <main class="nginx-page" v-loading="loading">
     <section v-if="gatewayManaged || gatewayError" class="page-card gateway-card">
       <div><h2>网关转发</h2><p>{{ gatewayEnabled ? '已开启，应用通过 Nginx 网关访问。' : gatewayEditing ? '请先确认下方 Nginx 配置，保存并校验通过后才会切换访问入口。' : '尚未开启。点击“配置并开启网关”查看并编辑 Nginx 配置，确认后点击“保存配置并开启”。' }}</p></div>
-      <el-button v-if="gatewayManaged && !gatewayEditing" :type="gatewayEnabled ? 'danger' : 'primary'" :plain="gatewayEnabled" :loading="gatewayBusy" :disabled="loading || saveLoading" @click="gatewayEnabled ? switchGateway(false) : prepareGateway()">{{ gatewayEnabled ? '关闭网关转发' : '配置并开启网关' }}</el-button>
+      <el-button v-if="gatewayManaged && !gatewayEditing" type="primary" :class="{ 'gateway-close-button': gatewayEnabled }" :loading="gatewayBusy" :disabled="loading || saveLoading" @click="gatewayEnabled ? switchGateway(false) : prepareGateway()">{{ gatewayEnabled ? '关闭网关转发' : '配置并开启网关' }}</el-button>
     </section>
     <el-alert v-if="gatewayError" class="template-notice" type="error" :closable="false" show-icon :title="gatewayValidationFailed ? 'Nginx 配置校验失败，请修改后重试' : gatewayError">
       <pre v-if="gatewayEditing" class="gateway-error-detail">{{ gatewayError }}</pre>
@@ -339,6 +339,26 @@ export default {
   padding-bottom: 32px;
 }
 .gateway-card { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 20px 24px; margin-bottom: 16px; }
+.gateway-close-button {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 15px;
+  border-radius: 2px;
+  font-weight: 400;
+  --el-button-bg-color: transparent;
+  --el-button-text-color: #165dff;
+  --el-button-border-color: #165dff;
+  --el-button-hover-bg-color: transparent;
+  --el-button-hover-text-color: #4080ff;
+  --el-button-hover-border-color: #4080ff;
+  --el-button-active-bg-color: transparent;
+  --el-button-active-text-color: #0e42d2;
+  --el-button-active-border-color: #0e42d2;
+  --el-button-disabled-bg-color: transparent;
+  --el-button-disabled-text-color: #94bfff;
+  --el-button-disabled-border-color: #94bfff;
+}
+.gateway-close-button:focus-visible { outline: 0; box-shadow: 0 0 0 3px #bedaff; }
 .gateway-error-detail { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; }
 .gateway-card h2 { margin: 0; color: #1d2129; font-size: 16px; }
 .gateway-card p { color: #86909c; font-size: 13px; line-height: 1.7; }
