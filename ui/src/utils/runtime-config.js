@@ -78,6 +78,15 @@ export function portRows(container, service) {
 const integerPort = value => Number.isInteger(Number(value)) && Number(value) >= 1 && Number(value) <= 65535
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
+export function runtimePortDraft(ports, service) {
+  // The default application Ingress uses Service port 80, independently of the listener.
+  const firstTCP = (service?.spec?.ports || []).length ? -1 : ports.findIndex(port => protocolOf(port) === 'TCP')
+  return ports.map((port, index) => ({
+    ...port,
+    servicePort: port.mapped ? port.servicePort : index === firstTCP ? 80 : port.containerPort
+  }))
+}
+
 export function buildRuntimePlan(deployment, service, draft) {
   const containers = deployment.spec?.template?.spec?.containers || []
   const original = containers.find(item => item.name === draft.containerName)

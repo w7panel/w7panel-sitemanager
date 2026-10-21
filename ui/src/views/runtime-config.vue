@@ -61,7 +61,7 @@
 <script>
 import { ElMessageBox } from 'element-plus'
 import panelAxios from '@/utils/panel'
-import { startupDraft, resolveStartup, portRows, buildRuntimePlan, deploymentPatch, serviceBody, servicePatch } from '@/utils/runtime-config'
+import { startupDraft, resolveStartup, portRows, runtimePortDraft, buildRuntimePlan, deploymentPatch, serviceBody, servicePatch } from '@/utils/runtime-config'
 
 const IMAGE_TEMPLATE = 'w7.cc/image_template'
 const IMAGE_VERSIONS = 'w7.cc/image_version'
@@ -366,7 +366,7 @@ export default {
         const startup = resolveStartup(this.startup)
         plan = buildRuntimePlan(this.deployment, this.service, {
           containerName: this.containerName, command: startup.command, args: startup.args,
-          ports: this.ports.map(port => ({ ...port, servicePort: port.mapped ? port.servicePort : port.containerPort })),
+          ports: runtimePortDraft(this.ports, this.service),
           image: this.versionChanged ? this.buildImage(this.selectedVersion) : '',
           version: this.selectedVersion
         })
