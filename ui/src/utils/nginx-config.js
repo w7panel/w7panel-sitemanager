@@ -1,3 +1,5 @@
+import { requiresFastcgi } from './site-http'
+
 const NGINX_CONF_DIR = '/www/server/nginx/conf.d'
 const NGINX_TEMPLATE_DIR = '/www/server/nginx/template-configs'
 export const NGINX_VALIDATION_FAILED = 'W7_NGINX_VALIDATION_FAILED\n'
@@ -99,7 +101,7 @@ export function defaultGatewayNginxConfig(application, config, domain) {
   if (![service, namespace].every(name => /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name))) throw new Error('应用 Service 名称或命名空间不正确')
   const port = config.applicationPort
   const hasBackend = Number.isInteger(port) && port >= 1 && port <= 65535
-  const php = (application.spec?.template?.spec?.containers || []).some(container => /(?:^|[/_-])php(?:[:@/_-]|$)/i.test(container.image || ''))
+  const php = requiresFastcgi(application)
   const upstream = `${service}.${namespace}.svc.cluster.local:${port}`
   const location = php && hasBackend ? `    location / {
         try_files $uri $uri/ /index.php?$query_string;

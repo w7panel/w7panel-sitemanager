@@ -1,5 +1,7 @@
 import { readSelection, RUNTIME_CONFIG } from './runtime-config'
 import { ingressBackendPatch } from './ingress-config'
+import { requiresFastcgi } from './site-http'
+import { withIngressDomains } from './nginx-domain'
 import { defaultGatewayNginxConfig, readGatewayNginxConfigCommand, saveNginxConfigCommand, validateNginxConfigCommand, checkNginxValidation } from './nginx-config'
 
 const DEPLOYMENTS = '/apis/apps/v1/namespaces/default/deployments'
@@ -30,7 +32,7 @@ export function gatewayConfig(application, tool, service = null) {
   if (!container) throw new Error('未找到网关容器')
   readSelection(tool, GATEWAY_RUNTIME_FIELDS)
   const applicationPort = (service?.spec?.ports || []).find(port => (port.protocol || 'TCP') === 'TCP')?.port || 0
-  return { ...config, applicationService: application.metadata.name, applicationPort, variants, enabled: (container.image === variants.enabled.image && JSON.stringify(container.command || []) === JSON.stringify(variants.enabled.command || []) && JSON.stringify(container.args || []) === JSON.stringify(variants.enabled.args || []))
+  return { ...config, applicationService: application.metadata.name, applicationPort, requiresFastcgi: requiresFastcgi(application), variants, enabled: (container.image === variants.enabled.image && JSON.stringify(container.command || []) === JSON.stringify(variants.enabled.command || []) && JSON.stringify(container.args || []) === JSON.stringify(variants.enabled.args || []))
       || ((container.command || []).some(arg => /(?:^|\/)sh$/.test(arg)) && (container.args || []).some(arg => arg.includes("nginx -g 'daemon off;'"))) }
 }
 
@@ -57,6 +59,7 @@ export function gatewayDeploymentPatch(tool, container, operation, preserve = tr
 export function gatewayIngressPatches(ingresses, config, enabled) {
   const target = enabled ? { name: config.toolService, port: { number: config.toolPort } }
     : { name: config.applicationService, port: { number: config.applicationPort } }
+  if (!enabled && config.requiresFastcgi) throw new Error('当前 PHP-FPM 环境需要网关处理 HTTP 请求，暂时无法关闭网关')
   if (!enabled && (!Number.isInteger(config.applicationPort) || config.applicationPort < 1)) throw new Error('应用没有可直接访问的 Service 端口，暂时无法关闭网关')
   const result = []
   for (const ingress of ingresses) {
@@ -130,9 +133,9 @@ export class GatewayController {
       if (error.response?.status !== 404) throw error
       const release = application.metadata.annotations?.['meta.helm.sh/release-name'] || this.group
       await this.api.post(SERVICES, { apiVersion: 'v1', kind: 'Service', metadata: {
-        name: tool.metadata.name, namespace: 'default',
+        name: tool.metadata.name, namespace: tool.metadata.namespace || 'default',
         labels: { 'app.kubernetes.io/managed-by': 'Helm', 'w7.cc/group-name': this.group },
-        annotations: { 'meta.helm.sh/release-name': release, 'meta.helm.sh/release-namespace': 'default' },
+        annotations: { 'meta.helm.sh/release-name': release, 'meta.helm.sh/release-namespace': tool.metadata.namespace || 'default' },
         ownerReferences: [{ apiVersion: 'apps/v1', kind: 'Deployment', name: tool.metadata.name, uid: tool.metadata.uid }]
       }, spec: { type: 'ClusterIP', selector: tool.spec.selector.matchLabels, ports: [{ name: 'http', port: config.toolPort, targetPort: 'http', protocol: 'TCP' }] } })
       return true
@@ -163,6 +166,7 @@ export class GatewayController {
       if (output.startsWith('EXISTING\n')) { content = output.slice('EXISTING\n'.length); exists = true }
       else if (output === 'MISSING\n') { content = this.state.initialNginxConfig; exists = false }
       else throw new Error('Nginx 配置读取结果不正确，请重试')
+      content = withIngressDomains(content, fileName.replace(/\.conf$/, ''), ingresses, config)
       this.prepared = { fileName, operation, toolUID: tool.metadata.uid }
       return { ...pod, fileName, content, exists }
     } finally { this.onPhase('') }
@@ -191,8 +195,9 @@ export class GatewayController {
         let activeOperation = tool.spec.template.metadata?.labels?.[OPERATION]
         const pod = await this.waitForTool(activeOperation, false)
         this.onPhase(saveConfig ? '保存配置并校验 Nginx 语法' : '校验 Nginx 语法')
+        const preparedContent = saveConfig ? withIngressDomains(content, fileName.replace(/\.conf$/, ''), ingresses, config) : content
         const response = await this.api.exec(pod.containerName, pod.podName, saveConfig
-          ? saveNginxConfigCommand(content, fileName, { allowCreate: true })
+          ? saveNginxConfigCommand(preparedContent, fileName, { allowCreate: true })
           : validateNginxConfigCommand())
         checkNginxValidation(response.data)
         nginxConfigSaved = saveConfig

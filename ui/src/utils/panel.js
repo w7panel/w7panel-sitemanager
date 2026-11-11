@@ -9,6 +9,10 @@ function getPanelToken() {
   return window.$wujie?.props?.paneltoken || localStorage.getItem('X-W7Panel-Token') || ''
 }
 
+export function getPanelNamespace() {
+  return window.$wujie?.props?.namespace || 'default'
+}
+
 panelAxios.interceptors.request.use(config => {
   config.headers = config.headers || {}
   config.headers.Authorization = `Bearer ${getPanelToken()}`
@@ -17,8 +21,12 @@ panelAxios.interceptors.request.use(config => {
     || config.url.includes('/apis/batch/v1')
     || config.url.includes('/apis/networking.k8s.io/')
     || config.url.includes('/apis/w7panel.w7.com')
+    || config.url.includes('/apis/cert-manager.io/')
     || config.url.includes('/api/v1')
   ) {
+    // Older tool pages use default in their API constants. Scope those requests
+    // to the namespace supplied by the panel, including exec requests below.
+    config.url = config.url.replace('/namespaces/default/', `/namespaces/${encodeURIComponent(getPanelNamespace())}/`)
     config.url = '/k8s-proxy' + config.url
   }
   return config
@@ -29,7 +37,7 @@ panelAxios.exec = function (containerName, podName, shell) {
     podName,
     containerName,
     tty: false,
-    namespace: 'default',
+    namespace: getPanelNamespace(),
     command: ['sh', '-c', shell]
   })
 }
@@ -39,7 +47,7 @@ panelAxios.execall = function (containerName, PodNames, shell) {
     PodNames,
     containerName,
     tty: false,
-    namespace: 'default',
+    namespace: getPanelNamespace(),
     command: ['sh', '-c', shell]
   })
 }

@@ -53,6 +53,8 @@ const DEFAULT_DOMAIN_ANNOTATION = 'w7.cc/default-domain'
 export default {
   name: 'NginxConfig',
   components: { Editor },
+  props: { context: { type: Object, required: true } },
+  emits: ['refresh'],
   data() {
     return {
       loading: true,
@@ -80,11 +82,18 @@ export default {
     }
   },
   async created() {
+    if (!this.context.gatewayAvailable) { this.loading = false; this.gatewayEnabled = false; this.gatewayError = '当前应用未提供网关配置能力'; return }
     await this.initializeGateway()
     if (this.gatewayEnabled) await this.loadNginxConfig()
     else this.loading = false
   },
   methods: {
+    async canLeave() {
+      if (this.gatewayBusy || this.saveLoading) { this.$message.info('网关配置正在处理中，请稍候'); return false }
+      if (this.nginxConfig === this.appliedNginxConfig) return true
+      try { await ElMessageBox.confirm('网关配置有未保存的修改，确定离开吗？', '未保存的配置', { confirmButtonText: '放弃并离开', cancelButtonText: '继续编辑', type: 'warning' }); return true }
+      catch { return false }
+    },
     async initializeGateway() {
       try {
         const name = this.getNginxDeploymentName()
@@ -103,6 +112,7 @@ export default {
         this.gatewayManaged = true
         this.gatewayEnabled = state.config.enabled
       } catch (error) {
+        this.gatewayEnabled = false
         this.gatewayError = error?.response?.data?.error || error.message || '网关状态读取失败'
       }
     },
@@ -149,6 +159,7 @@ export default {
         this.gatewayEditing = false
         if (enabled) await this.loadNginxConfig()
         this.$message.success(enabled ? '网关转发已开启' : '网关转发已关闭')
+        this.$emit('refresh')
       } catch (error) {
         this.gatewayValidationFailed = !!error.nginxValidationFailed
         if (saveConfig && (error.nginxConfigSaved || error.nginxPreparationRequired)) {

@@ -5,21 +5,7 @@
 </template>
 
 <script>
-function resolveRoutePath(value) {
-  let path = String(value || '').trim()
-  try {
-    path = decodeURIComponent(path)
-  } catch {
-    // Keep malformed encoded routes usable as plain strings.
-  }
-  const hashIndex = path.lastIndexOf('#')
-  if (hashIndex >= 0) path = path.slice(hashIndex + 1)
-  path = path.split('?')[0].replace(/^\/+|\/+$/g, '')
-  const segments = path.split('/').filter(Boolean)
-  const page = segments[segments.length - 1]
-  if (page === 'environment') return '/environment'
-  return page === 'version' ? '/version' : '/nginx'
-}
+import { resolveSiteRoute as resolveRoutePath } from '@/utils/site-route'
 
 function getInitialRoute() {
   const location = window.$wujie?.location || window.location

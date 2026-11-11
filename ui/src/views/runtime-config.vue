@@ -1,66 +1,58 @@
 <template>
-  <main class="runtime-page" v-loading="loading">
-    <header class="page-heading page-card">
-      <div><h1>运行配置</h1><p>统一管理应用版本、启动方式和端口，保存后应用会重新启动。</p></div>
-      <el-button type="primary" class="panel-outline-button" :disabled="saving" @click="loadApplication">刷新配置</el-button>
-    </header>
-    <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon />
+  <main class="basic-config" v-loading="loading">
+    <el-alert v-if="loadError || saveError" :title="loadError || saveError" type="error" :closable="false" show-icon><el-button @click="deployment ? refreshApplication() : loadApplication()">重试</el-button></el-alert>
     <template v-if="deployment && !loadError">
-      <section class="page-card">
-        <header class="card-header"><h2>版本与镜像</h2><p>管理应用主容器，未修改的配置继续跟随应用更新。</p></header>
-        <div class="card-body form-grid">
-          <span class="field-label">应用容器</span><code>{{ containerName }}</code>
-          <span class="field-label">当前镜像</span><code>{{ currentImage }}</code>
-          <template v-if="versions.length && imageTemplate">
-            <label for="version">应用版本</label>
-            <select id="version" v-model="selectedVersion" :disabled="saving">
-              <option v-if="!versions.includes(currentVersion)" :value="currentVersion">{{ currentVersion || '保留当前镜像' }}</option>
-              <option v-for="version in versions" :key="version" :value="version">{{ version }}</option>
-            </select>
-          </template>
-          <template v-else><span class="field-label">应用版本</span><span class="muted">未配置可切换的版本，可继续修改命令和端口。</span></template>
-          <span class="field-label">系统盘存储路径</span>
-          <div v-if="systemDiskPaths.length" class="path-list"><code v-for="path in systemDiskPaths" :key="path">{{ path }}</code></div><span v-else class="muted">未配置</span>
-        </div>
-        <div v-if="versionChanged && systemDiskPaths.length" class="risk-warning" role="alert">切换版本会重置系统盘数据。请提前备份；新版本启动正常后才会清理旧版本目录。</div>
-      </section>
-      <section class="page-card">
-        <header class="card-header"><h2>启动方式</h2><p>使用镜像默认启动方式，或填写自己的启动命令。</p></header>
-        <div class="card-body">
-          <div class="startup-options" role="radiogroup" aria-label="启动方式">
-            <label class="startup-option"><input v-model="startup.mode" type="radio" value="default" :disabled="saving" /><span>使用镜像默认启动方式</span></label>
-            <label class="startup-option"><input v-model="startup.mode" type="radio" value="custom" :disabled="saving" /><span>自定义启动命令</span></label>
+      <el-form label-width="116px" class="site-form" @submit.prevent>
+        <el-form-item label="域名" required><DomainConfig ref="domains" :context="context" /></el-form-item>
+        <el-form-item label="目录">
+          <div class="site-directory" aria-label="站点目录">{{ context.directory?.path || '无法确定站点目录' }}</div>
+          <p v-if="context.directoryError" class="field-help">{{ context.directoryError }}</p>
+        </el-form-item>
+        <el-form-item label="运行环境" required>
+          <div class="environment-field">
+            <el-select v-if="versions.length && imageTemplate" v-model="selectedVersion" :disabled="saving" :teleported="false" aria-label="运行环境版本">
+              <el-option v-if="!versions.includes(currentVersion)" :value="currentVersion" :label="currentVersion || '保留当前环境'" />
+              <el-option v-for="version in versions" :key="version" :label="version" :value="version" />
+            </el-select>
+            <span v-else>{{ currentVersion || currentImage.split('/').pop() || '当前环境' }}</span>
+            <p class="field-help">{{ context.appGroup.spec?.title || context.appGroup.metadata.annotations?.title || '当前站点' }}使用独立运行环境。</p>
           </div>
-          <p v-if="startup.mode === 'default'" class="field-help">按镜像内置的启动方式运行，无需填写命令。</p>
-          <div v-else class="startup-command">
-            <label for="startup-command">启动命令</label>
-            <textarea id="startup-command" v-model="startup.text" :disabled="saving" rows="3" spellcheck="false" placeholder="例如：php-fpm -F 或 npm run start" />
-            <p v-if="startup.inheritedArgs" class="field-help">当前使用镜像内置命令，附加参数为 {{ startup.inheritedArgs }}。未编辑时保持原配置；修改时请填写完整启动命令。</p>
-            <p class="field-help">直接填写完整命令即可，多条命令可用 &amp;&amp; 连接。请确保相关程序已在容器中安装。</p>
+        </el-form-item>
+        <el-form-item label="启动命令" required>
+          <div class="startup-field">
+            <div class="startup-options">
+              <label><input v-model="startup.mode" type="radio" value="default" :disabled="saving" />使用默认启动方式</label>
+              <label><input v-model="startup.mode" type="radio" value="custom" :disabled="saving" />自定义启动命令</label>
+            </div>
+            <el-input v-if="startup.mode === 'custom'" v-model="startup.text" type="textarea" :rows="3" :disabled="saving" aria-label="启动命令" placeholder="例如 cd /www/wwwroot &amp;&amp; npm run start" />
+            <p v-if="startup.inheritedArgs" class="field-help">当前附加参数：{{ startup.inheritedArgs }}。未编辑时保留原配置。</p>
+            <p class="field-help">{{ startup.mode === 'default' ? '按环境内置的启动方式运行。' : '填写完整命令，多条命令可用 && 连接。' }}</p>
           </div>
-        </div>
-      </section>
-      <section class="page-card">
-        <header class="card-header section-heading"><div><h2>端口</h2><p>填写应用实际监听的端口。</p></div><el-button type="primary" class="panel-outline-button" :disabled="saving" @click="addPort">添加端口</el-button></header>
-        <div class="card-body">
-          <div v-if="!ports.length" class="empty">尚未配置端口。</div>
-          <div v-else class="port-list">
+        </el-form-item>
+        <el-form-item label="端口">
+          <div class="ports-field">
             <div v-for="(port, index) in ports" :key="index" class="port-row">
-              <label :for="`port-${index}`">{{ ports.length > 1 ? `端口 ${index + 1}` : '端口' }}</label>
-              <input :id="`port-${index}`" v-model.number="port.containerPort" type="number" min="1" max="65535" :disabled="saving" placeholder="例如 8080" />
+              <el-input-number v-model="port.containerPort" :min="1" :max="65535" :controls="false" :disabled="saving" :aria-label="`应用端口 ${index + 1}`" />
               <el-button v-if="!port.existing" text type="danger" :disabled="saving" @click="ports.splice(index, 1)">移除</el-button>
             </div>
+            <el-button class="port-add" :disabled="saving" @click="addPort">＋ 添加端口</el-button>
+            <p class="field-help">填写应用实际监听的端口；已有端口暂不支持删除。</p>
           </div>
-          <p class="field-help">端口需与应用的启动命令或配置一致；已有端口暂不支持删除。</p>
-        </div>
-      </section>
-      <footer class="save-bar"><div><strong>{{ saving ? savingPhase : '保存后重启应用' }}</strong><p>修改过的启动方式和端口将在支持运行配置保留的应用更新中继续生效。</p></div><el-button type="primary" :loading="saving" @click="saveRuntime">保存并应用</el-button></footer>
+        </el-form-item>
+        <el-form-item v-if="versionChanged && systemDiskPaths.length"><el-alert type="warning" title="切换版本会重置系统盘数据，请先备份。新版本就绪后会清理旧版本目录。" :closable="false" show-icon /></el-form-item>
+        <el-form-item>
+          <div><el-button type="primary" :loading="saving" :disabled="!!saveError" @click="saveRuntime">保存并应用</el-button><el-button :disabled="saving" @click="refreshApplication">刷新</el-button>
+            <p class="field-help">{{ saving ? savingPhase : '保存运行配置后应用会重新启动。' }}</p></div>
+        </el-form-item>
+      </el-form>
+      <details class="runtime-details"><summary>详细信息</summary><dl><dt>应用容器</dt><dd>{{ containerName }}</dd><dt>当前镜像</dt><dd>{{ currentImage }}</dd><dt>系统盘路径</dt><dd>{{ systemDiskPaths.join('、') || '未配置' }}</dd></dl></details>
     </template>
   </main>
 </template>
 <script>
 import { ElMessageBox } from 'element-plus'
 import panelAxios from '@/utils/panel'
+import DomainConfig from '@/components/site/DomainConfig.vue'
 import { startupDraft, resolveStartup, portRows, runtimePortDraft, buildRuntimePlan, deploymentPatch, serviceBody, servicePatch } from '@/utils/runtime-config'
 
 const IMAGE_TEMPLATE = 'w7.cc/image_template'
@@ -76,9 +68,13 @@ const CLEANUP_IMAGE = 'busybox:1.37.0'
 
 export default {
   name: 'RuntimeConfig',
+  components: { DomainConfig },
+  props: { context: { type: Object, required: true } },
+  emits: ['refresh'],
   data() {
     return {
       loading: true,
+      initialDraft: '',
       saving: false,
       appGroup: null,
       deployment: null,
@@ -93,10 +89,13 @@ export default {
       ports: [],
       service: null,
       loadError: '',
+      saveError: '',
       savingPhase: ''
     }
   },
   computed: {
+    runtimeDraft() { return JSON.stringify({ version: this.selectedVersion, mode: this.startup.mode, text: this.startup.text, ports: this.ports }) },
+    runtimeDirty() { return !!this.initialDraft && this.runtimeDraft !== this.initialDraft },
     versionChanged() { return !!this.selectedVersion && this.selectedVersion !== this.currentVersion },
     systemDiskPaths() {
       const deploymentAnnotations = this.deployment?.spec?.template?.metadata?.annotations || {}
@@ -111,6 +110,18 @@ export default {
     this.loadApplication()
   },
   methods: {
+    async canLeave() {
+      if (this.saving || this.$refs.domains?.busy) { this.$message.info('正在保存配置，请稍候'); return false }
+      if (!this.runtimeDirty && !this.$refs.domains?.hasDraft()) return true
+      try { await ElMessageBox.confirm('有未保存的站点配置，确定离开吗？', '未保存的配置', { confirmButtonText: '放弃并离开', cancelButtonText: '继续编辑', type: 'warning' }); return true }
+      catch { return false }
+    },
+    async refreshApplication() {
+      if (!await this.canLeave()) return
+      if (this.$refs.domains) { this.$refs.domains.form = null; this.$refs.domains.httpsDraft = null; this.$refs.domains.removeRow = null; this.$refs.domains.load() }
+      await this.loadApplication()
+      this.$emit('refresh')
+    },
     appGroupName() {
       return window.$wujie?.props?.group || window.$wujie?.props?.appgroup || ''
     },
@@ -128,7 +139,7 @@ export default {
       if (!image.startsWith(prefix) || !image.endsWith(suffix)) return ''
       return image.slice(prefix.length, suffix ? -suffix.length : undefined)
     },
-    async loadApplication() {
+    async loadApplication({ afterSave = false } = {}) {
       this.loading = true
       this.loadError = ''
       const appGroupName = this.appGroupName()
@@ -160,14 +171,18 @@ export default {
           this.service = null
         }
         this.resetDraft()
+        this.saveError = ''
       } catch (error) {
-        this.loadError = error?.response?.data?.message || error?.message || '应用信息获取失败'
+        const detail = error?.response?.data?.message || error?.message || '应用信息获取失败'
+        if (afterSave) this.saveError = `运行配置已应用，但配置刷新失败，请刷新检查后重试。 ${detail}`
+        else this.loadError = detail
       } finally {
         this.loading = false
       }
     },
     resetDraft() {
-      const container = this.deployment?.spec?.template?.spec?.containers?.[0]
+      const containers = this.deployment?.spec?.template?.spec?.containers || []
+      const container = containers.find(item => item.name === this.context.directory?.containerName) || containers[0]
       this.containerName = container?.name || ''
       if (!container) return
       this.currentImage = container.image || ''
@@ -175,6 +190,7 @@ export default {
       this.selectedVersion = this.currentVersion
       this.startup = startupDraft(container)
       this.ports = portRows(container, this.service)
+      this.initialDraft = this.runtimeDraft
     },
     addPort() {
       let index = this.ports.length + 1
@@ -357,7 +373,7 @@ export default {
         .replace(/[^A-Za-z0-9._-]+/g, '-')
     },
     async saveRuntime() {
-      if (this.saving || !this.deployment || this.loadError) return
+      if (this.saving || !this.deployment || this.loadError || this.saveError) return
       let plan
       let body
       try {
@@ -420,14 +436,15 @@ export default {
           await this.cleanupOldRootfs(oldRootfsEntries, annotations, updatedDeployment)
         }
         this.$message.success('运行配置已应用')
-        await this.loadApplication()
+        await this.loadApplication({ afterSave: true })
+        this.$emit('refresh')
       } catch (error) {
         const detail = error?.response?.data?.message || error?.response?.data?.error || error?.message || '保存失败'
         const state = deploymentApplied
           ? (body && !serviceApplied ? '容器配置已提交，但 Service 未确认更新成功。请刷新检查后重试；旧系统盘目录未清理。' : '配置已提交，但启动或清理未完成。请检查运行状态。')
           : '未确认配置提交成功，请刷新检查后重试。'
-        this.loadError = `${state} ${detail}`
-        this.$message.error(this.loadError)
+        this.saveError = `${state} ${detail}`
+        this.$message.error(this.saveError)
       } finally { this.saving = false; this.savingPhase = '' }
     }
   }
@@ -435,41 +452,5 @@ export default {
 </script>
 
 <style scoped>
-.runtime-page { box-sizing: border-box; display: grid; gap: 16px; width: 100%; min-width: 0; margin: 0; padding-bottom: 32px; }
-.page-heading, .section-heading, .save-bar { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.page-heading { padding: 20px 24px; }
-h1 { margin: 0; color: #1d2129; font-size: 18px; font-weight: 600; }
-h2 { margin: 0; color: #1d2129; font-size: 16px; font-weight: 600; }
-.page-heading p, .card-header p, .save-bar p { margin: 8px 0 0; color: #86909c; font-size: 13px; line-height: 1.6; }
-.page-card { background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); overflow: hidden; }
-.card-header { padding: 22px 24px 16px; border-bottom: 1px solid #f2f3f5; }
-.card-body { padding: 24px; }
-.form-grid { display: grid; grid-template-columns: 126px minmax(0, 720px); gap: 18px 20px; align-items: start; }
-.form-grid > * { min-width: 0; }
-.form-grid label, .field-label { padding-top: 8px; color: #4e5969; }
-code { box-sizing: border-box; display: inline-block; max-width: 100%; padding: 7px 10px; color: #1d2129; background: #f7f8fa; border-radius: 4px; word-break: break-all; white-space: pre-wrap; }
-.path-list { display: grid; gap: 6px; }
-.muted, .empty { color: #86909c; line-height: 36px; font-size: 13px; }
-input, select, textarea { box-sizing: border-box; width: 100%; border: 1px solid #c9cdd4; border-radius: 4px; background: #fff; color: #1d2129; font-size: 14px; padding: 8px 10px; }
-select, input { height: 36px; }
-.form-grid select { max-width: 380px; }
-textarea { resize: vertical; font-family: ui-monospace, monospace; line-height: 1.6; }
-input:focus, select:focus, textarea:focus { outline: 2px solid rgb(22 93 255 / 15%); border-color: #165dff; }
-input:disabled, select:disabled, textarea:disabled { background: #f7f8fa; color: #86909c; }
-.field-help { margin: 8px 0 0; color: #86909c; font-size: 12px; line-height: 1.7; }
-.risk-warning { margin: 0 24px 24px; padding: 12px 16px; color: #7a4600; background: #fff7e8; border: 1px solid #ffcf8b; border-radius: 4px; line-height: 1.7; }
-.startup-options { display: flex; flex-wrap: wrap; gap: 16px 28px; }
-.startup-option { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: #4e5969; }
-.startup-option input { width: 16px; height: 16px; margin: 0; accent-color: #165dff; }
-.startup-command { display: grid; gap: 10px; width: 100%; max-width: 720px; min-width: 0; margin-top: 20px; }
-.startup-command > label { color: #4e5969; }
-.port-list { display: grid; gap: 12px; max-width: 540px; }
-.port-row { display: grid; grid-template-columns: 80px minmax(0, 380px) auto; align-items: center; gap: 16px; }
-.port-row label { color: #4e5969; }
-.save-bar { padding: 18px 24px; background: #fff; border: 1px solid #e5e6eb; border-radius: 6px; box-shadow: 0 -4px 16px rgb(0 0 0 / 3%); }
-.save-bar strong { color: #1d2129; font-size: 14px; font-weight: 500; }
-:deep(.el-button) { border-radius: 4px; --el-color-primary: #165dff; }
-.page-heading > div, .section-heading > div { flex: 1; min-width: 0; }
-.page-heading .panel-outline-button, .section-heading .panel-outline-button { margin-left: auto; }
-@media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; gap: 8px; } .form-grid label { margin-top: 8px; } .page-heading, .card-body, .card-header { padding: 16px; } .page-heading, .section-heading { align-items: flex-start; gap: 12px; } .save-bar { align-items: flex-start; flex-direction: column; gap: 12px; } }
+.basic-config{max-width:1100px;padding:0 0 24px}.site-form :deep(.el-form-item){margin-bottom:28px}.site-form :deep(.el-form-item__content){display:block;min-width:0}.site-form :deep(.el-form-item__label){justify-content:flex-start;padding-left:12px}.site-directory{line-height:32px;overflow-wrap:anywhere}.environment-field{max-width:420px}.environment-field .el-select{width:280px}.startup-options{display:flex;gap:24px;margin-bottom:12px;flex-wrap:wrap}.startup-options label{display:flex;align-items:center;gap:6px;cursor:pointer}.field-help{font-size:13px;line-height:1.7;color:#86909c;margin:8px 0 0}.ports-field{display:grid;gap:10px;justify-items:start}.port-add{--el-button-text-color:var(--el-color-primary)}.port-row{display:flex;gap:12px}.runtime-details{margin-left:116px;color:#86909c;font-size:13px}.runtime-details summary{cursor:pointer}.runtime-details dl{display:grid;grid-template-columns:100px 1fr;gap:12px}.runtime-details dd{margin:0;overflow-wrap:anywhere}@media(max-width:760px){.runtime-details{margin-left:0}.site-form :deep(.el-form-item__label){width:90px!important}}
 </style>

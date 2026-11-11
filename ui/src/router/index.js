@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import NginxConfig from '@/views/nginx.vue'
 import RuntimeConfig from '@/views/runtime-config.vue'
+import SiteConfig from '@/views/site-config.vue'
 
 const EnvironmentConfig = () => import('@/views/environment.vue')
 
@@ -9,17 +10,25 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/nginx'
+      redirect: '/site/basic'
     },
     {
       path: '/nginx',
-      name: 'nginx',
-      component: NginxConfig
+      redirect: '/site/gateway'
     },
     {
       path: '/version',
-      name: 'version',
-      component: RuntimeConfig
+      redirect: '/site/basic'
+    },
+    { path: '/files', redirect: '/site/files' },
+    {
+      path: '/site', component: SiteConfig, redirect: '/site/basic',
+      children: [
+        { path: 'basic', name: 'site-basic', component: RuntimeConfig },
+        { path: 'gateway', name: 'site-gateway', component: NginxConfig },
+        // Compatibility entry; SiteConfig forwards it to the panel's native page.
+        { path: 'files', name: 'site-files', component: { render: () => null } }
+      ]
     },
     {
       path: '/environment',
@@ -28,7 +37,7 @@ const router = createRouter({
     },
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/nginx'
+      redirect: '/site/basic'
     }
   ]
 })

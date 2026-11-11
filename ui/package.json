@@ -4,7 +4,8 @@
   "private": true,
   "scripts": {
     "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build"
+    "build": "vue-cli-service build",
+    "test": "node --test ../scripts/*.test.cjs ../scripts/*.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.1",
