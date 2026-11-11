@@ -20,7 +20,6 @@
       <el-button :loading="busy" type="danger" @click="remove">确认移除</el-button><el-button :disabled="busy" @click="removeRow = null">取消</el-button>
     </div>
     <el-button v-if="!form" class="domain-add" :disabled="busy || loading || !!httpsDraft" @click="add">＋ 添加域名</el-button>
-    <el-button v-if="!form" text :disabled="busy || loading || !!httpsDraft" @click="load">刷新域名</el-button>
     <div v-else class="domain-form">
       <div class="domain-entry">
         <el-input v-model="form.host" :disabled="!!form.ingress || busy" :spellcheck="false" placeholder="例如 www.example.com" aria-label="域名">
@@ -207,5 +206,5 @@ export default {
 }
 </script>
 <style scoped>
-.domains{display:grid;gap:14px}.domain-notice.el-alert{--el-alert-bg-color:#ecf5ff;color:#1d2129}.domain-notice :deep(.el-alert__icon){color:#0052d9}.domain-row{display:flex;align-items:center;gap:12px;min-height:44px;border:1px solid #dcdfe6;border-radius:4px;padding:0 12px;flex-wrap:wrap}.domain-row>.el-checkbox{flex-shrink:0;margin-right:0}.domain-protocol{color:#86909c}.domain-host{flex:1;overflow-wrap:anywhere}.domain-help{font-size:12px;color:#86909c}.domain-add{width:100%;color:#0052d9}.domain-form,.domain-https{display:grid;gap:14px}.domain-entry{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.domain-entry>.el-input{flex:1 1 240px;min-width:0}.domain-entry>.el-checkbox{flex-shrink:0;margin-right:0}.domain-confirm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#fff7e6}
+.domains{display:grid;gap:14px;width:510px}.domain-notice.el-alert{--el-alert-bg-color:#ecf5ff;color:#1d2129}.domain-notice :deep(.el-alert__icon){color:#0052d9}.domain-row{display:flex;align-items:center;gap:12px;min-height:44px;border:1px solid #dcdfe6;border-radius:4px;padding:0 12px;flex-wrap:wrap}.domain-row>.el-checkbox{flex-shrink:0;margin-right:0}.domain-protocol{color:#86909c}.domain-host{flex:1;overflow-wrap:anywhere}.domain-help{font-size:12px;color:#86909c}.domain-add{width:100%;color:#0052d9}.domain-form,.domain-https{display:grid;gap:14px}.domain-entry{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.domain-entry>.el-input{flex:1 1 240px;min-width:0}.domain-entry>.el-checkbox{flex-shrink:0;margin-right:0}.domain-confirm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#fff7e6}
 </style>
