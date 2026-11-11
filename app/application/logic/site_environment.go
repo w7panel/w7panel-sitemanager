@@ -5,14 +5,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/patrickmn/go-cache"
 	"github.com/w7panel/w7panel-sitemanager/common/dao"
 	"github.com/w7panel/w7panel-sitemanager/common/entity"
 	zpkmarket "github.com/w7panel/w7panel-sitemanager/common/service/zpk-market"
 	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 )
-
-var environmentListCache = cache.New(10*time.Minute, 15*time.Minute)
 
 type SiteEnvironment struct {
 	logic
@@ -42,23 +39,29 @@ func (l SiteEnvironment) getSiteEnvironmentServerDir(siteEnvironment entity.Envi
 }
 
 func (l SiteEnvironment) GetSupportEnvironmentList() (*zpkmarket.ListResp, error) {
-	val, exists := environmentListCache.Get("site_environment_list_cache_v4")
-	if !exists {
-		marketResp, err := zpkmarket.Client{}.ListFormulas(zpkmarket.FormulaListRequest{
-			Page: 1, Limit: 100, Tag: "运行环境",
-		})
-		if err != nil {
-			return nil, err
-		}
-		listResp := &zpkmarket.ListResp{Limit: marketResp.Limit, Page: marketResp.Page, Total: marketResp.Total, List: make([]zpkmarket.ZpkInfo, 0, len(marketResp.List))}
-		for _, formula := range marketResp.List {
-			listResp.List = append(listResp.List, zpkmarket.ZpkInfo{
-				Name: formula.Name, Identifier: formula.Identify, Identifie: formula.Identify, Icon: formula.Icon, Description: formula.Description, FormulaURL: formula.FormulaURL,
-				SupportVersion: formula.SupportVersions(),
-			})
-		}
-		environmentListCache.Set("site_environment_list_cache", listResp, cache.DefaultExpiration)
-		return listResp, nil
+	const baseURL = "https://zpk.w7.cc"
+	environments := []struct {
+		identifier  string
+		name        string
+		description string
+	}{
+		{"w7-php", "php", "php 运行环境"},
+		{"w7-go", "go", "golang 运行环境"},
+		{"w7-nodejs", "nodejs", "nodejs运行环境"},
+		{"w7-python", "python", "python 运行环境"},
+		{"w7-prosenv", "php_微擎", "微擎系统专用运行环境，默认安装了必要的PHP扩展"},
 	}
-	return val.(*zpkmarket.ListResp), nil
+	list := make([]zpkmarket.ZpkInfo, 0, len(environments))
+	for _, environment := range environments {
+		list = append(list, zpkmarket.ZpkInfo{
+			Name:           environment.name,
+			Identifier:     environment.identifier,
+			Identifie:      environment.identifier,
+			Icon:           baseURL + "/zpk/zip/icon/" + environment.identifier,
+			Description:    environment.description,
+			FormulaURL:     baseURL + "/zpk/respo/info/" + environment.identifier,
+			SupportVersion: []string{},
+		})
+	}
+	return &zpkmarket.ListResp{Limit: 100, Page: 1, Total: len(list), List: list}, nil
 }
