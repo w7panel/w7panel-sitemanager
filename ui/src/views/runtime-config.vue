@@ -3,49 +3,55 @@
     <el-alert v-if="loadError || saveError" :title="loadError || saveError" type="error" :closable="false" show-icon><el-button @click="deployment ? refreshApplication() : loadApplication()">重试</el-button></el-alert>
     <template v-if="deployment && !loadError">
       <el-form label-width="116px" class="site-form" @submit.prevent>
-        <el-form-item label="域名" required><DomainConfig ref="domains" :context="context" /></el-form-item>
+        <el-form-item label="域名" required><DomainConfig ref="domains" :context="context" :locked="runtimeBusy" :inert="runtimeBusy ? '' : null" /></el-form-item>
         <el-form-item label="目录">
           <div class="site-directory" aria-label="站点目录">{{ context.directory?.path || '无法确定站点目录' }}</div>
           <p v-if="context.directoryError" class="field-help">{{ context.directoryError }}</p>
         </el-form-item>
-        <el-form-item label="运行环境" required>
+        <el-form-item label="环境版本" required>
           <div class="environment-field">
-            <el-select v-if="versions.length && imageTemplate" v-model="selectedVersion" :disabled="saving" :teleported="false" aria-label="运行环境版本">
+            <el-select v-if="versions.length && imageTemplate" v-model="selectedVersion" :disabled="runtimeBusy" :teleported="false" aria-label="环境版本">
               <el-option v-if="!versions.includes(currentVersion)" :value="currentVersion" :label="currentVersion || '保留当前环境'" />
               <el-option v-for="version in versions" :key="version" :label="version" :value="version" />
             </el-select>
             <span v-else>{{ currentVersion || currentImage.split('/').pop() || '当前环境' }}</span>
-            <p class="field-help">{{ context.appGroup.spec?.title || context.appGroup.metadata.annotations?.title || '当前站点' }}使用独立运行环境。</p>
           </div>
         </el-form-item>
         <el-form-item label="启动命令" required>
           <div class="startup-field">
             <div class="startup-options">
-              <label><input v-model="startup.mode" type="radio" value="default" :disabled="saving" />使用默认启动方式</label>
-              <label><input v-model="startup.mode" type="radio" value="custom" :disabled="saving" />自定义启动命令</label>
+              <label><input v-model="startup.mode" type="radio" value="default" :disabled="runtimeBusy" />使用默认启动方式</label>
+              <label><input v-model="startup.mode" type="radio" value="custom" :disabled="runtimeBusy" />自定义启动命令</label>
             </div>
-            <el-input v-if="startup.mode === 'custom'" v-model="startup.text" type="textarea" :rows="3" :disabled="saving" aria-label="启动命令" placeholder="例如 cd /www/wwwroot &amp;&amp; npm run start" />
+            <el-input v-if="startup.mode === 'custom'" v-model="startup.text" type="textarea" :rows="3" :disabled="runtimeBusy" aria-label="启动命令" placeholder="例如 cd /www/wwwroot &amp;&amp; npm run start" />
             <p v-if="startup.inheritedArgs" class="field-help">当前附加参数：{{ startup.inheritedArgs }}。未编辑时保留原配置。</p>
             <p class="field-help">{{ startup.mode === 'default' ? '按环境内置的启动方式运行。' : '填写完整命令，多条命令可用 && 连接。' }}</p>
+            <div class="restart-actions">
+              <el-button v-if="!restartOperation" :loading="restarting" :disabled="runtimeBusy || !!saveError || !!restartDisabledReason || !!$refs.domains?.busy" @click="restartApplication">重启应用</el-button>
+              <el-button v-else :loading="restarting" :disabled="runtimeBusy" @click="checkRestart">检查重启状态</el-button>
+              <router-link v-if="restartError" to="/site/logs">查看运行日志</router-link>
+            </div>
+            <p v-if="restartDisabledReason" class="field-help">{{ restartDisabledReason }}</p>
+            <p v-if="restartStatus" class="field-help" role="status">{{ restartStatus }}</p>
+            <el-alert v-if="restartError" :title="restartError" type="error" :closable="false" show-icon />
           </div>
         </el-form-item>
         <el-form-item label="端口">
           <div class="ports-field">
             <div v-for="(port, index) in ports" :key="index" class="port-row">
-              <el-input-number v-model="port.containerPort" :min="1" :max="65535" :controls="false" :disabled="saving" :aria-label="`应用端口 ${index + 1}`" />
-              <el-button v-if="!port.existing" text type="danger" :disabled="saving" @click="ports.splice(index, 1)">移除</el-button>
+              <el-input v-model="port.containerPort" inputmode="numeric" :disabled="runtimeBusy" placeholder="请输入端口" :aria-label="`应用端口 ${index + 1}`" />
+              <el-button v-if="!port.existing" text type="danger" :disabled="runtimeBusy" @click="ports.splice(index, 1)">移除</el-button>
             </div>
-            <el-button class="port-add" :disabled="saving" @click="addPort">＋ 添加端口</el-button>
+            <el-button class="port-add" :disabled="runtimeBusy" @click="addPort">＋ 添加端口</el-button>
             <p class="field-help">填写应用实际监听的端口；已有端口暂不支持删除。</p>
           </div>
         </el-form-item>
         <el-form-item v-if="versionChanged && systemDiskPaths.length"><el-alert type="warning" title="切换版本会重置系统盘数据，请先备份。新版本就绪后会清理旧版本目录。" :closable="false" show-icon /></el-form-item>
         <el-form-item>
-          <div><el-button type="primary" :loading="saving" :disabled="!!saveError" @click="saveRuntime">保存并应用</el-button><el-button :disabled="saving" @click="refreshApplication">刷新</el-button>
+          <div><el-button type="primary" :loading="saving" :disabled="runtimeBusy || !!restartOperation || !!saveError || !!$refs.domains?.busy" @click="saveRuntime">保存并应用</el-button><el-button :disabled="runtimeBusy" @click="refreshApplication">刷新</el-button>
             <p class="field-help">{{ saving ? savingPhase : '保存运行配置后应用会重新启动。' }}</p></div>
         </el-form-item>
       </el-form>
-      <details class="runtime-details"><summary>详细信息</summary><dl><dt>应用容器</dt><dd>{{ containerName }}</dd><dt>当前镜像</dt><dd>{{ currentImage }}</dd><dt>系统盘路径</dt><dd>{{ systemDiskPaths.join('、') || '未配置' }}</dd></dl></details>
     </template>
   </main>
 </template>
@@ -54,6 +60,7 @@ import { ElMessageBox } from 'element-plus'
 import panelAxios from '@/utils/panel'
 import DomainConfig from '@/components/site/DomainConfig.vue'
 import { startupDraft, resolveStartup, portRows, runtimePortDraft, buildRuntimePlan, deploymentPatch, serviceBody, servicePatch } from '@/utils/runtime-config'
+import { RESTART_ID, RESTART_PATCH_OPTIONS, restartBlockReason, restartPatch, waitForRestart } from '@/utils/site-restart'
 
 const IMAGE_TEMPLATE = 'w7.cc/image_template'
 const IMAGE_VERSIONS = 'w7.cc/image_version'
@@ -76,6 +83,7 @@ export default {
       loading: true,
       initialDraft: '',
       saving: false,
+      saveConfirming: false,
       appGroup: null,
       deployment: null,
       workloadName: '',
@@ -90,10 +98,17 @@ export default {
       service: null,
       loadError: '',
       saveError: '',
-      savingPhase: ''
+      savingPhase: '',
+      restartConfirming: false,
+      restarting: false,
+      restartOperation: null,
+      restartError: '',
+      restartStatus: ''
     }
   },
   computed: {
+    runtimeBusy() { return this.saving || this.saveConfirming || this.restarting || this.restartConfirming },
+    restartDisabledReason() { return this.deployment ? restartBlockReason(this.deployment) : '' },
     runtimeDraft() { return JSON.stringify({ version: this.selectedVersion, mode: this.startup.mode, text: this.startup.text, ports: this.ports }) },
     runtimeDirty() { return !!this.initialDraft && this.runtimeDraft !== this.initialDraft },
     versionChanged() { return !!this.selectedVersion && this.selectedVersion !== this.currentVersion },
@@ -111,16 +126,91 @@ export default {
   },
   methods: {
     async canLeave() {
-      if (this.saving || this.$refs.domains?.busy) { this.$message.info('正在保存配置，请稍候'); return false }
+      if (this.runtimeBusy || this.$refs.domains?.busy) { this.$message.info(this.restarting ? '正在重启应用，请稍候' : '正在保存配置，请稍候'); return false }
       if (!this.runtimeDirty && !this.$refs.domains?.hasDraft()) return true
       try { await ElMessageBox.confirm('有未保存的站点配置，确定离开吗？', '未保存的配置', { confirmButtonText: '放弃并离开', cancelButtonText: '继续编辑', type: 'warning' }); return true }
       catch { return false }
     },
     async refreshApplication() {
       if (!await this.canLeave()) return
-      if (this.$refs.domains) { this.$refs.domains.form = null; this.$refs.domains.httpsDraft = null; this.$refs.domains.removeRow = null; this.$refs.domains.load() }
+      if (this.restartOperation) {
+        await this.checkRestart()
+        if (this.restartOperation) return
+      }
+      if (this.$refs.domains) { this.$refs.domains.form = null; this.$refs.domains.httpsDraft = null; this.$refs.domains.editDraft = null; this.$refs.domains.removeRow = null; this.$refs.domains.load() }
       await this.loadApplication()
       this.$emit('refresh')
+    },
+    async restartApplication() {
+      if (this.runtimeBusy || this.restartOperation || !this.deployment || this.loadError || this.saveError || this.$refs.domains?.busy) return
+      if (this.restartDisabledReason) { this.$message.info(this.restartDisabledReason); return }
+      this.restartConfirming = true
+      try {
+        const dirty = this.runtimeDirty || this.$refs.domains?.hasDraft()
+        await ElMessageBox.confirm(`将按已保存的配置重启应用，访问可能短暂中断。${dirty ? '当前页面有未保存修改，本次不会提交这些修改，草稿会保留。' : ''}`, '重启应用', {
+          confirmButtonText: '按已保存配置重启', cancelButtonText: dirty ? '继续编辑' : '取消', type: 'warning'
+        })
+      } catch { return }
+      finally { this.restartConfirming = false }
+      this.restarting = true; this.restartError = ''; this.restartStatus = '正在检查已保存的应用配置'
+      const url = `${DEPLOYMENT_API}/${encodeURIComponent(this.workloadName)}`
+      const operation = { uid: this.deployment.metadata.uid, id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`, startedAt: new Date().toISOString() }
+      let submitted = false
+      try {
+        const current = (await panelAxios.get(url)).data
+        if (current?.metadata?.uid !== this.deployment.metadata.uid || current.metadata.resourceVersion !== this.deployment.metadata.resourceVersion)
+          throw new Error('应用已被其他操作更新，请刷新配置后重试')
+        const patch = restartPatch(current, operation)
+        operation.generation = Number(current.metadata.generation) + 1
+        this.restartStatus = '正在提交重启请求'
+        try {
+          const response = (await panelAxios.patch(url, patch, RESTART_PATCH_OPTIONS)).data
+          if (response?.metadata?.uid !== operation.uid || response.spec?.template?.metadata?.annotations?.[RESTART_ID] !== operation.id)
+            throw new Error('重启响应不完整')
+          this.deployment = response
+        } catch (error) {
+          let observed
+          try { observed = (await panelAxios.get(url)).data }
+          catch { this.restartOperation = operation; throw new Error('重启请求的提交状态未确认，请检查重启状态，勿重复发起') }
+          if (observed?.metadata?.uid !== operation.uid || observed.spec?.template?.metadata?.annotations?.[RESTART_ID] !== operation.id) throw error
+          this.deployment = observed
+        }
+        operation.generation = this.deployment.metadata.generation
+        this.restartOperation = operation; submitted = true
+        await this.observeRestart(url, operation)
+      } catch (error) {
+        this.handleRestartError(error, submitted)
+      } finally { this.restarting = false }
+    },
+    async observeRestart(url, operation) {
+      this.restartStatus = '重启已提交，等待应用就绪'
+      const current = await waitForRestart(panelAxios, url, operation, {
+        onObserved: deployment => { if (deployment?.metadata?.uid === operation.uid) this.deployment = deployment }
+      })
+      this.deployment = current
+      this.restartOperation = null
+      this.restartStatus = '应用重启成功'
+      this.restartError = ''
+      this.$message.success('应用重启成功')
+      // Keep startup, version, port and domain drafts exactly as the user left them.
+    },
+    async checkRestart() {
+      if (this.runtimeBusy || !this.restartOperation) return
+      this.restarting = true; this.restartError = ''
+      try { await this.observeRestart(`${DEPLOYMENT_API}/${encodeURIComponent(this.workloadName)}`, this.restartOperation) }
+      catch (error) { this.handleRestartError(error, true) }
+      finally { this.restarting = false }
+    },
+    handleRestartError(error, submitted) {
+      this.restartError = error.response?.data?.message || error.message || '重启失败'
+      this.restartStatus = submitted || this.restartOperation ? '重启尚未确认完成' : '重启未提交'
+      if (error.restartChanged) {
+        this.restartOperation = null
+        this.saveError = `${this.restartError}。当前草稿已保留，请刷新配置后再操作。`
+      } else if (error.restartFailed) {
+        this.restartOperation = null
+        this.restartStatus = '本次重启失败，可查看日志后重新发起'
+      }
     },
     appGroupName() {
       return window.$wujie?.props?.group || window.$wujie?.props?.appgroup || ''
@@ -172,6 +262,8 @@ export default {
         }
         this.resetDraft()
         this.saveError = ''
+        this.restartError = ''
+        this.restartStatus = ''
       } catch (error) {
         const detail = error?.response?.data?.message || error?.message || '应用信息获取失败'
         if (afterSave) this.saveError = `运行配置已应用，但配置刷新失败，请刷新检查后重试。 ${detail}`
@@ -195,7 +287,7 @@ export default {
     addPort() {
       let index = this.ports.length + 1
       while (this.ports.some(port => port.name === `port-${index}`)) index += 1
-      this.ports.push({ name: `port-${index}`, protocol: 'TCP', containerPort: '', servicePort: '', existing: false, mapped: false })
+      this.ports.push({ name: `port-${index}`, protocol: 'TCP', containerPort: null, servicePort: '', existing: false, mapped: false })
     },
     buildImage(version) {
       if (!this.imageTemplate.includes('{version}')) throw new Error('应用未配置有效的镜像模板')
@@ -373,7 +465,7 @@ export default {
         .replace(/[^A-Za-z0-9._-]+/g, '-')
     },
     async saveRuntime() {
-      if (this.saving || !this.deployment || this.loadError || this.saveError) return
+      if (this.runtimeBusy || this.restartOperation || this.$refs.domains?.busy || !this.deployment || this.loadError || this.saveError) return
       let plan
       let body
       try {
@@ -389,6 +481,7 @@ export default {
         if (!plan.changes.length) { this.$message.info('配置没有变化'); return }
         if (plan.serviceChanged || plan.portsChanged) body = serviceBody(this.deployment, this.service, plan, this.appGroupName())
       } catch (error) { this.$message.error(error.message); return }
+      this.saveConfirming = true
       try {
         await ElMessageBox.confirm(
           `即将更新：${plan.changes.join('、')}。应用会重新启动。${this.versionChanged && this.systemDiskPaths.length ? '\n切换版本会重置系统盘数据，请确认已备份。' : ''}`,
@@ -396,6 +489,7 @@ export default {
           { confirmButtonText: '保存并应用', cancelButtonText: '取消', type: 'warning' }
         )
       } catch { return }
+      finally { this.saveConfirming = false }
       this.saving = true
       this.savingPhase = '检查配置是否已被其他操作修改'
       let deploymentApplied = false
@@ -452,5 +546,6 @@ export default {
 </script>
 
 <style scoped>
-.basic-config{max-width:1100px;padding:0 0 24px}.site-form :deep(.el-form-item){margin-bottom:28px}.site-form :deep(.el-form-item__content){display:block;min-width:0}.site-form :deep(.el-form-item__label){justify-content:flex-start;padding-left:12px}.site-directory{line-height:32px;overflow-wrap:anywhere}.environment-field{max-width:420px}.environment-field .el-select{width:280px}.startup-options{display:flex;gap:24px;margin-bottom:12px;flex-wrap:wrap}.startup-options label{display:flex;align-items:center;gap:6px;cursor:pointer}.field-help{font-size:13px;line-height:1.7;color:#86909c;margin:8px 0 0}.ports-field{display:grid;gap:10px;justify-items:start}.port-add{--el-button-text-color:var(--el-color-primary)}.port-row{display:flex;gap:12px}.runtime-details{margin-left:116px;color:#86909c;font-size:13px}.runtime-details summary{cursor:pointer}.runtime-details dl{display:grid;grid-template-columns:100px 1fr;gap:12px}.runtime-details dd{margin:0;overflow-wrap:anywhere}@media(max-width:760px){.runtime-details{margin-left:0}.site-form :deep(.el-form-item__label){width:90px!important}}
+.restart-actions{display:flex;align-items:center;gap:16px;margin-top:12px}.restart-actions a{color:var(--el-color-primary)}
+.basic-config{max-width:1100px;padding:0 0 24px}.site-form :deep(.el-form-item){margin-bottom:28px}.site-form :deep(.el-form-item__content){display:block;min-width:0}.site-form :deep(.el-form-item__label){justify-content:flex-start;padding-left:12px}.site-directory{line-height:32px;overflow-wrap:anywhere}.environment-field{max-width:420px}.environment-field .el-select{width:280px}.startup-options{display:flex;gap:24px;margin-bottom:12px;flex-wrap:wrap}.startup-options label{display:flex;align-items:center;gap:6px;cursor:pointer}.field-help{font-size:13px;line-height:1.7;color:#86909c;margin:8px 0 0}.ports-field{display:grid;gap:10px;justify-items:start}.port-add{--el-button-text-color:var(--el-color-primary)}.port-row{display:flex;gap:12px}.port-row>.el-input{width:150px}@media(max-width:760px){.site-form :deep(.el-form-item__label){width:90px!important}}
 </style>

@@ -49,10 +49,9 @@ if ! nginx -t > "$VALIDATION_LOG" 2>&1; then
 fi`
 }
 
-export function saveNginxConfigCommand(content, configFileName, { allowCreate = false } = {}) {
+export function saveNginxConfigCommand(content, configFileName, { allowCreate = false, expectedContent } = {}) {
   const text = String(content ?? '')
-  let marker = 'W7_NGINX_EOF'
-  while (text.includes(marker)) marker += '_X'
+  const quote = value => "'" + String(value).replaceAll("'", "'\"'\"'") + "'"
   return `${allowCreate ? nginxConfigPathCommand(configFileName) : requireNginxConfigFileCommand(configFileName)}
 mkdir -p "$CONF_DIR"
 existed=false
@@ -70,6 +69,10 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
+${expectedContent === undefined ? '' : `printf '%s' ${quote(expectedContent)} > "$TMP_DIR/expected"
+if ! cmp -s "$CONF_FILE" "$TMP_DIR/expected"; then
+  echo '网关配置已被其他操作修改，请刷新后重试' >&2; exit 1
+fi`}
 if [ "$existed" = true ]; then
   cp -p "$CONF_FILE" "$TMP_DIR/backup"
   cp -p "$CONF_FILE" "$TMP_DIR/new"
@@ -77,9 +80,7 @@ else
   touch "$TMP_DIR/new"
   chmod 644 "$TMP_DIR/new"
 fi
-cat <<'${marker}' > "$TMP_DIR/new"
-${text}
-${marker}
+printf '%s' ${quote(text)} > "$TMP_DIR/new"
 replaced=true
 mv "$TMP_DIR/new" "$CONF_FILE"
 if nginx -t > "$TMP_DIR/validation" 2>&1; then

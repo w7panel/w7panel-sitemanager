@@ -9,15 +9,13 @@ export function siteMenuPatch(microapp) {
   const obsoleteTitles = new Set(['网关配置', '终端', '日志', '重启'])
   const bindings = microapp.spec.bindings.map(binding => {
     if (!Array.isArray(binding.menu) || !binding.menu.some(menu => ['站点配置', '基础配置', '网关配置'].includes(menu.title) || ['#/', '#/version', '#/nginx', '#/site/basic'].includes(menu.do))) return binding
-    const fileEntry = binding.menu.find(item => [SITE_FILES_MENU_DO, '#/site/files', '#/files'].includes(item.do))
     const menu = binding.menu.filter(item => !obsoleteTitles.has(item.title) && !['#/nginx', '#/files', '#/site/gateway', '#/site/files', SITE_FILES_MENU_DO].includes(item.do))
     const index = menu.findIndex(item => ['站点配置', '基础配置'].includes(item.title) || ['#/', '#/version', '#/site/basic'].includes(item.do))
-    const renamedRoutes = new Map([['#/files', SITE_FILES_MENU_DO], ['#/site/files', SITE_FILES_MENU_DO]])
+    // Files now lives in the site's own navigation. Keep custom child entries reachable.
+    const renamedRoutes = new Map([['#/files', '#/site/basic'], ['#/site/files', '#/site/basic'], [SITE_FILES_MENU_DO, '#/site/basic']])
     if (index >= 0 && menu[index].do) renamedRoutes.set(menu[index].do, '#/site/basic')
     const entry = { ...(index >= 0 ? menu[index] : {}), title: '站点配置', do: '#/site/basic' }
     if (index >= 0) menu[index] = entry; else menu.unshift(entry)
-    menu.push({ ...fileEntry, title: '文件管理', do: SITE_FILES_MENU_DO, icon: fileEntry?.icon || 'icon-folder',
-      ...(!fileEntry && entry.parent !== undefined ? { parent: entry.parent } : {}), is_default: 0, displayorder: Number(entry.displayorder || 0) - 1 })
     return { ...binding, menu: menu.map(item => renamedRoutes.has(item.parent)
       ? { ...item, parent: renamedRoutes.get(item.parent) } : item) }
   })

@@ -6,5 +6,5 @@ export function resolveSiteRoute(value) {
   path = '/' + path.split('?')[0].replace(/^\/+|\/+$/g, '')
   const aliases = { '/': '/site/basic', '/version': '/site/basic', '/nginx': '/site/gateway', '/files': '/site/files' }
   if (aliases[path]) return aliases[path]
-  return ['/site/basic', '/site/gateway', '/site/files', '/environment'].includes(path) ? path : '/site/basic'
+  return ['/site/basic', '/site/gateway', '/site/files', '/site/terminal', '/site/logs', '/environment'].includes(path) ? path : '/site/basic'
 }

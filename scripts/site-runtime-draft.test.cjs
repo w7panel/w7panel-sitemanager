@@ -167,7 +167,7 @@ async function harness() {
   }
 }
 
-for (const kind of ['form', 'httpsDraft']) {
+for (const kind of ['form', 'httpsDraft', 'editDraft']) {
   for (const failure of ['conflict', 'network', 'rollout']) {
     test(`${kind} survives ${failure} during runtime save and is discarded only after confirmed refresh`, async t => {
       const state = await harness()
@@ -215,6 +215,7 @@ for (const kind of ['form', 'httpsDraft']) {
       assert.equal(ctx.$refs.domains, domains)
       assert.equal(domains.form, null)
       assert.equal(domains.httpsDraft, null)
+      assert.equal(domains.editDraft, null)
       assert.equal(ctx.loadError, '')
       assert.equal(ctx.saveError, '')
       assert.equal(ctx.runtimeDirty, false)
@@ -251,7 +252,7 @@ test('an unsuccessful confirmed refresh retains the save error until application
   assert(state.ctx.$refs.domains)
 })
 
-for (const kind of ['form', 'httpsDraft']) {
+for (const kind of ['form', 'httpsDraft', 'editDraft']) {
   test(`${kind} survives automatic refresh failure after runtime changes have been applied`, async t => {
     const state = await harness()
     t.after(() => state.app.unmount())
@@ -283,6 +284,7 @@ for (const kind of ['form', 'httpsDraft']) {
     await settle()
     assert.equal(domains.form, null)
     assert.equal(domains.httpsDraft, null)
+    assert.equal(domains.editDraft, null)
     assert.equal(ctx.loadError, '')
     assert.equal(ctx.saveError, '')
     assert.equal(ctx.runtimeDirty, false)

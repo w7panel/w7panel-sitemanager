@@ -1,8 +1,8 @@
 <template>
   <main class="nginx-page" v-loading="loading">
     <section v-if="gatewayManaged || gatewayError" class="page-card gateway-card">
-      <div><h2>网关转发</h2><p>{{ gatewayEnabled ? '已开启，应用通过 Nginx 网关访问。' : gatewayEditing ? '请先确认下方 Nginx 配置，保存并校验通过后才会切换访问入口。' : '尚未开启。点击“配置并开启网关”查看并编辑 Nginx 配置，确认后点击“保存配置并开启”。' }}</p></div>
-      <el-button v-if="gatewayManaged && !gatewayEditing" type="primary" :class="{ 'panel-outline-button': gatewayEnabled }" :loading="gatewayBusy" :disabled="loading || saveLoading" @click="gatewayEnabled ? switchGateway(false) : prepareGateway()">{{ gatewayEnabled ? '关闭网关转发' : '配置并开启网关' }}</el-button>
+      <div><h2>网关转发</h2><p>开启后会在应用前加一个 Nginx 网关服务，用于 HTTP 请求转发，常用于 PHP-FPM 等无独立 Web 服务的场景。</p></div>
+      <el-switch v-if="gatewayManaged" :model-value="gatewayEnabled || gatewayEditing" :loading="gatewayBusy" :disabled="loading || saveLoading" inline-prompt :active-text="gatewayEditing ? '待应用' : '开启'" inactive-text="关闭" aria-label="网关转发" @change="changeGateway" />
     </section>
     <el-alert v-if="gatewayError" class="template-notice" type="error" :closable="false" show-icon :title="gatewayValidationFailed ? 'Nginx 配置校验失败，请修改后重试' : gatewayError">
       <pre v-if="gatewayEditing" class="gateway-error-detail">{{ gatewayError }}</pre>
@@ -12,18 +12,13 @@
       <span class="gateway-progress-spinner" aria-hidden="true"></span>
       <span>{{ gatewayPhase || '正在处理网关配置，请稍候…' }}</span>
     </div>
-    <el-alert v-if="(gatewayEnabled || (gatewayEditing && gatewayConfigExists)) && latestTemplateDiffers" class="template-notice template-update-notice" type="info" :closable="false" show-icon
-      title="应用最新模板与当前生效配置不同"
-      description="升级已保留你的配置。可查看最新模板，将需要的内容合并到下方配置后再应用。" />
     <el-alert v-if="latestTemplateError" class="template-notice" type="warning" :closable="false" show-icon
       title="最新模板读取失败" :description="latestTemplateError" />
     <section v-if="gatewayEnabled || gatewayEditing" class="page-card editor-card">
       <header class="card-header">
-        <div class="heading-row">
-          <h1>Nginx 配置</h1>
-          <el-button v-if="latestNginxConfig !== null" type="primary" class="panel-outline-button" @click="latestDialogVisible = true">查看最新模板</el-button>
-        </div>
-        <p>{{ gatewayEditing ? gatewayConfigExists ? '已读取存储中的站点配置，请确认或修改后保存并开启。' : '尚无站点配置，已生成常用配置，请根据应用的目录、端口等补充后保存并开启。' : '编辑默认域名对应的站点配置，应用时自动校验 Nginx 语法，失败会恢复原文件。' }}</p>
+        <h1>Nginx 配置</h1>
+        <p>应用时自动校验 Nginx 语法，失败会恢复配置。升级应用不改变已保存配置。<template v-if="latestNginxConfig !== null">可<button type="button" class="template-link" @click="latestDialogVisible = true">点击查看最新模板</button>获取最新配置内容。</template></p>
+        <p v-if="gatewayEditing" class="gateway-editing-help" role="status">{{ gatewayConfigExists ? '已读取保存的站点配置，请确认或修改后点击“保存配置并开启”。' : '已生成常用配置，请根据应用目录、端口等补充后点击“保存配置并开启”。' }}保存并校验通过后才会开启网关。</p>
       </header>
       <div :inert="gatewayBusy || saveLoading ? '' : null"><Editor v-model:content="nginxConfig" /></div>
     </section>
@@ -45,7 +40,7 @@ import Editor from '@/components/Editor.vue'
 import panelAxios from '@/utils/panel'
 import { ElMessageBox } from 'element-plus'
 import { GatewayController, GATEWAY_CONTAINERS } from '@/utils/gateway-config'
-import { normalizeNginxConfig, latestNginxTemplateCommand, requireNginxConfigFileCommand, saveNginxConfigCommand, checkNginxValidation } from '@/utils/nginx-config'
+import { latestNginxTemplateCommand, requireNginxConfigFileCommand, saveNginxConfigCommand, checkNginxValidation } from '@/utils/nginx-config'
 
 const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
 const DEFAULT_DOMAIN_ANNOTATION = 'w7.cc/default-domain'
@@ -75,12 +70,6 @@ export default {
       gatewayValidationFailed: false
     }
   },
-  computed: {
-    latestTemplateDiffers() {
-      return this.latestNginxConfig !== null
-        && normalizeNginxConfig(this.latestNginxConfig) !== normalizeNginxConfig(this.appliedNginxConfig)
-    }
-  },
   async created() {
     if (!this.context.gatewayAvailable) { this.loading = false; this.gatewayEnabled = false; this.gatewayError = '当前应用未提供网关配置能力'; return }
     await this.initializeGateway()
@@ -88,6 +77,19 @@ export default {
     else this.loading = false
   },
   methods: {
+    async changeGateway(enabled) {
+      if (this.loading || this.gatewayBusy || this.saveLoading) return
+      if (enabled) return this.prepareGateway()
+      if (this.gatewayEditing) {
+        if (!await this.canLeave()) return
+        this.nginxConfig = this.appliedNginxConfig
+        this.gatewayEditing = false
+        this.gatewayError = ''
+        this.gatewayRetry = null
+        return
+      }
+      return this.switchGateway(false)
+    },
     async canLeave() {
       if (this.gatewayBusy || this.saveLoading) { this.$message.info('网关配置正在处理中，请稍候'); return false }
       if (this.nginxConfig === this.appliedNginxConfig) return true
@@ -358,27 +360,18 @@ export default {
 @keyframes gateway-progress-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .gateway-progress-spinner { animation: none; } }
 .template-notice { margin-bottom: 16px; }
-.template-update-notice {
-  --el-alert-padding: 20px 15px;
-  --el-alert-border-radius-base: 2px;
-  --el-alert-icon-large-size: 18px;
-  align-items: flex-start;
-  border: 0;
-  background: #f2f7ff;
-  color: #4e5969;
-}
-.template-update-notice :deep(.el-alert__icon) { flex-shrink: 0; margin: 3px 8px 0 0; color: #165dff; }
-.template-update-notice :deep(.el-alert__content) { min-width: 0; }
-.template-update-notice :deep(.el-alert__title) { color: #1d2129; font-size: 16px; font-weight: 500; line-height: 24px; }
-.template-update-notice :deep(.el-alert__description) { color: #4e5969; font-size: 14px; line-height: 22px; }
-.heading-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.gateway-card :deep(.el-switch) { flex-shrink: 0; }
+.template-link { display: inline; margin: 0 3px; padding: 0; border: 0; background: none; color: var(--el-color-primary); font: inherit; cursor: pointer; }
+.template-link:hover { text-decoration: underline; }
+.template-link:focus-visible { outline: 2px solid var(--el-color-primary); outline-offset: 2px; }
 .template-help { margin: 0 0 16px; color: #4e5969; line-height: 1.7; }
 .template-content { box-sizing: border-box; width: 100%; height: 52vh; padding: 16px; border: 1px solid #e5e6eb; border-radius: 4px; background: #f7f8fa; color: #1d2129; font: 13px/1.7 ui-monospace, monospace; min-height: 0; flex: 1 1 auto; resize: none; white-space: pre; overflow: auto; overscroll-behavior: contain; }
 .page-card { background: #fff; border-radius: 6px; box-shadow: 0 2px 8px rgb(0 0 0 / 4%); }
 .editor-card { overflow: hidden; }
 .card-header { padding: 22px 24px 16px; border-bottom: 1px solid #f2f3f5; }
 .card-header h1 { margin: 0; color: #1d2129; font-size: 18px; font-weight: 600; }
-.card-header p { margin: 8px 0 0; color: #86909c; font-size: 13px; }
+.card-header p { margin: 8px 0 0; color: #86909c; font-size: 13px; line-height: 1.7; }
+.card-header .gateway-editing-help { color: #4e5969; }
 .editor-card :deep(.editor) { border: 0; border-radius: 0; }
 .editor-card :deep(.cm-editor) { min-height: 520px; }
 .actions { display: flex; justify-content: center; margin-top: 20px; }

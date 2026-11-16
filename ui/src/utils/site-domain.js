@@ -95,15 +95,25 @@ export async function nginxDomainChange(context, host, add = true) {
   const original = String((await panelAxios.exec(container.name, pod.metadata.name, `${requireNginxConfigFileCommand(filename)}\ncat "$CONF_FILE"`)).data ?? '')
   const content = updateNginxDomain(original, context.hostname, host, add)
   if (content === original) return null
-  async function apply(value) {
-    const response = await panelAxios.exec(container.name, pod.metadata.name, saveNginxConfigCommand(value, filename))
+  async function read() {
+    return String((await panelAxios.exec(container.name, pod.metadata.name, `${requireNginxConfigFileCommand(filename)}\ncat "$CONF_FILE"`)).data ?? '')
+  }
+  async function apply(value, expectedContent) {
+    const response = await panelAxios.exec(container.name, pod.metadata.name, saveNginxConfigCommand(value, filename, { expectedContent }))
     checkNginxValidation(response.data)
     await panelAxios.exec(container.name, pod.metadata.name, 'nginx -s reload')
   }
-  try { await apply(content) }
+  try { await apply(content, original) }
   catch (error) {
-    try { await apply(original) } catch { throw new Error('网关更新未完成且原配置恢复失败，请检查网关配置后重试') }
+    if (error.nginxValidationFailed) throw error // The save command has already restored the original file.
+    try {
+      const current = await read()
+      if (current !== original) {
+        if (current !== content) throw new Error('concurrent gateway edit')
+        await apply(original, content)
+      }
+    } catch { throw Object.assign(new Error('网关更新状态未确认，或配置已被其他操作修改；请检查网关配置后重试'), { uncertain: true }) }
     throw error
   }
-  return () => apply(original)
+  return () => apply(original, content)
 }

@@ -28,7 +28,7 @@ const app = () => ({ metadata: { name: 'site', namespace: 'tenant' }, spec: { te
   { name: 'sidecar', image: 'helper', volumeMounts: [] }, { name: 'web', image: 'node:22', volumeMounts: [{ name: 'data', subPath: 'nginx-web-dir/site.example.com', mountPath: '/www/wwwroot' }] }
 ], volumes: [{ name: 'data', persistentVolumeClaim: { claimName: 'site-data' } }] } } } })
 test('legacy and current routes resolve to the same site workspace', () => {
-  for (const [input, expected] of [['#/', '/site/basic'], ['#/version', '/site/basic'], ['/nginx', '/site/gateway'], ['https://host/tool/#/files', '/site/files'], ['#/site/files', '/site/files'], ['/environment', '/environment']]) assert.equal(resolveSiteRoute(input), expected)
+  for (const [input, expected] of [['#/', '/site/basic'], ['#/version', '/site/basic'], ['/nginx', '/site/gateway'], ['https://host/tool/#/files', '/site/files'], ['#/site/files', '/site/files'], ['#/site/terminal', '/site/terminal'], ['#/site/logs', '/site/logs'], ['/environment', '/environment']]) assert.equal(resolveSiteRoute(input), expected)
 })
 test('namespace and MicroApp menu identity are supplied separately from the tool workload', () => {
   const identity = siteIdentity({ appgroup: 'site', namespace: 'tenant', app_name: 'tool-workload', microappName: 'tool-menu' })
