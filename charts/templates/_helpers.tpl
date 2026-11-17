@@ -153,7 +153,7 @@ imagePullPolicy: {{ .Values.placeholderImage.pullPolicy | default "IfNotPresent"
 volumeMounts:
   - mountPath: {{.Values.global.NGINX_DIR}}
     name: site-storage
-    subPath: nginx-dir
+    subPath: {{ printf "nginx-dir/%s" $domain | quote }}
   {{/* Keep the NGINX root path while mounting only this site's code. */}}
   - mountPath: {{ printf "%s/%s" (trimSuffix "/" .Values.global.NGINX_WEB_DIR) $domain | quote }}
     name: site-storage
