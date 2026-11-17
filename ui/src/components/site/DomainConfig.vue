@@ -4,23 +4,19 @@
     <el-alert v-if="error" type="error" :title="error" :closable="false" show-icon />
     <template v-for="row in rows" :key="row.key">
       <div class="domain-row">
-        <span class="domain-protocol">{{ row.https ? 'https://' : 'http://' }}</span>
-        <el-input v-if="editDraft?.key === row.key" v-model="editDraft.host" class="domain-edit-input" :disabled="busy || locked || editDraft.uncertain" :spellcheck="false" :aria-label="`编辑域名 ${row.host}`" @keyup.enter="saveEdit" />
-        <span v-else class="domain-host">{{ row.host }}</span>
-        <span v-if="row.host === context.hostname" class="domain-help">主域名</span>
+        <el-input :model-value="editDraft?.key === row.key ? editDraft.host : row.host" class="domain-edit-input" :readonly="row.host === context.hostname" :disabled="domainInputDisabled(row)" :spellcheck="false" :aria-label="`域名 ${row.host}`" @update:model-value="value => edit(row, value)" @keyup.enter="saveEdit" @keyup.esc="cancelEdit">
+          <template #prepend>{{ row.https ? 'https://' : 'http://' }}</template>
+        </el-input>
         <el-checkbox :model-value="!!row.auto" :disabled="locked || busy || loading || !!httpsDraft || !!removeRow || !!editDraft || !row.editable" :aria-label="`${row.host} 自动HTTPS`" @change="(enabled, event) => toggleHttps(row, enabled, event)">自动HTTPS</el-checkbox>
-        <el-button v-if="row.host !== context.hostname && editDraft?.key !== row.key" text :disabled="!row.canEdit || locked || busy || loading || !!httpsDraft || !!removeRow || !!form || !!editDraft" @click="edit(row)">编辑</el-button>
-        <el-button text type="danger" :disabled="!row.removable || locked || busy || loading || !!httpsDraft || !!editDraft" @click="removeRow = row">移除</el-button>
-      </div>
-      <div v-if="editDraft?.key === row.key" class="domain-edit">
-        <template v-if="row.auto && editDraft.host.trim().startsWith('*.' )">
-          <el-select v-model="editDraft.profileId" :disabled="locked || busy || editDraft.uncertain" :teleported="false" placeholder="选择新域名对应的 DNS 配置" aria-label="新泛域名 DNS 配置">
+        <template v-if="editDraft?.key === row.key">
+          <el-select v-if="row.auto && editDraft.host.trim().startsWith('*.' )" v-model="editDraft.profileId" :disabled="locked || busy || editLoading || editDraft.uncertain" :teleported="false" placeholder="选择新域名对应的 DNS 配置" aria-label="新泛域名 DNS 配置">
             <el-option v-for="profile in editProfiles" :key="profile.id" :value="profile.id" :label="`${profile.name || profile.provider} · ${profile.zone}`" />
           </el-select>
-          <p v-if="!editProfiles.length" class="domain-help">请先在面板域名管理中验证新泛域名对应的 DNS 配置。</p>
+          <el-button v-if="!editDraft.uncertain" text type="primary" :loading="busy" :disabled="locked || loading || editLoading" @click="saveEdit">保存</el-button>
+          <el-button v-else text :disabled="busy || locked" @click="verifyEdit">检查提交结果</el-button>
+          <el-button text :disabled="busy || locked || editDraft.uncertain" @click="cancelEdit">取消</el-button>
         </template>
-        <p class="domain-help">保存后请修改 DNS 解析。{{ row.auto ? '自动 HTTPS 将为新域名重新申请证书，签发完成前可能暂时无法访问。' : '' }}</p>
-        <div><el-button v-if="!editDraft.uncertain" type="primary" :loading="busy" :disabled="locked || loading" @click="saveEdit">保存修改</el-button><el-button v-else :disabled="busy || locked" @click="verifyEdit">检查提交结果</el-button><el-button :disabled="busy || locked || editDraft.uncertain" @click="editDraft = null">取消</el-button></div>
+        <el-button v-else text type="danger" :disabled="!row.removable || locked || busy || loading || !!httpsDraft || !!editDraft" @click="removeRow = row">移除</el-button>
       </div>
       <div v-if="httpsDraft?.key === row.key" class="domain-https">
         <el-select v-model="httpsDraft.profileId" :disabled="busy" :teleported="false" placeholder="选择已验证的 DNS 配置" aria-label="泛域名 DNS 配置">
@@ -58,24 +54,25 @@ import { normalizeDomain, ingressApi, domainIngress, domainHttpsState, setAutoHt
 import { loadSiteContext } from '@/utils/site-context'
 import panelAxios from '@/utils/panel'
 import DomainParseAlert from './DomainParseAlert.vue'
-import { canEditDomain, matchingDnsProfiles, renameSiteDomain } from '@/utils/site-domain-edit'
+import { canEditDomain, matchingDnsProfiles, renameSiteDomain, verifySiteDomainRename } from '@/utils/site-domain-edit'
 export default {
   components: { DomainParseAlert },
   props: { context: { type: Object, required: true }, locked: { type: Boolean, default: false } },
   data: () => ({ loading: false, busy: false, error: '', ingresses: [],
-    classes: [], profiles: [], whiteList: [], optionsReady: false, form: null, removeRow: null, httpsDraft: null, editDraft: null }),
+    classes: [], profiles: [], whiteList: [], optionsReady: false, form: null, removeRow: null, httpsDraft: null, editDraft: null, editLoading: false }),
   computed: {
     rows() {
       const rows = [], services = [this.context.application.metadata.name, this.context.tool?.metadata?.name].filter(Boolean)
       for (const ingress of this.ingresses) {
         for (const rule of ingress.spec?.rules || []) {
           if (!rule.host || !rule.http?.paths?.some(path => services.includes(path.backend?.service?.name))) continue
+          if (rows.some(row => row.key === `${ingress.metadata.name}/${rule.host}`)) continue
           const { auto, https, simple, editable } = domainHttpsState(ingress, rule.host)
           rows.push({ key: `${ingress.metadata.name}/${rule.host}`, host: rule.host, ingress, https, auto, editable, canEdit: canEditDomain(this.context, ingress, rule.host),
             removable: simple && rule.host !== this.context.hostname && ingress.metadata.annotations?.[SITE_DOMAIN] === this.context.group })
         }
       }
-      if (!rows.some(row => row.host === this.context.hostname)) rows.unshift({ key: 'default', host: this.context.hostname, https: false })
+      if (!rows.some(row => row.host === this.context.hostname)) rows.unshift({ key: 'default', host: this.context.hostname, https: false, canEdit: false })
       return [
         ...rows.filter(row => row.host === this.context.hostname),
         ...rows.filter(row => row.host !== this.context.hostname)
@@ -87,36 +84,61 @@ export default {
   },
   mounted() { this.load() },
   methods: {
-    async edit(row) {
-      if (this.locked || this.busy || this.loading || this.editDraft || this.form || this.httpsDraft || this.removeRow || !row?.canEdit || !canEditDomain(this.context, row.ingress, row.host)) return
-      this.editDraft = { key: row.key, host: row.host, ingress: row.ingress, profileId: '', uncertain: false }
+    domainInputDisabled(row) {
+      return row.host === this.context.hostname || !row.canEdit || this.locked || this.busy || this.loading || !!this.form || !!this.httpsDraft || !!this.removeRow
+        || (!!this.editDraft && (this.editDraft.key !== row.key || this.editDraft.uncertain))
+    },
+    cancelEdit() { if (!this.busy && !this.locked && !this.editDraft?.uncertain) { this.editDraft = null; this.editLoading = false } },
+    async edit(row, value = row.host) {
+      if (this.domainInputDisabled(row)) return
+      if (this.editDraft?.key === row.key) {
+        this.editDraft.host = value
+        if (!this.editProfiles.some(profile => profile.id === this.editDraft.profileId)) this.editDraft.profileId = ''
+        return
+      }
+      if (row.ingress && !canEditDomain(this.context, row.ingress, row.host)) return
+      this.editDraft = { key: row.key, oldHost: row.host, host: value, ingress: row.ingress, profileId: '', uncertain: false, autoHttps: !!row.auto }
       this.error = ''
+      const draft = this.editDraft
       if (!row.auto) return
-      this.loading = true
+      this.editLoading = true
       try {
         const profiles = (await panelAxios.get('/panel-api/v1/dns-profiles')).data
+        if (this.editDraft !== draft) return
         if (!Array.isArray(profiles)) throw new Error('DNS 配置读取失败，请重试')
         this.profiles = profiles
-        const oldProfile = row.ingress.metadata.annotations?.['w7.cc/dns-profile']
-        if (this.editProfiles.some(profile => profile.id === oldProfile)) this.editDraft.profileId = oldProfile
-      } catch (error) { this.error = error.response?.data?.message || error.message }
-      finally { this.loading = false }
+        if (this.editDraft !== draft) return
+        const oldProfile = row.ingress?.metadata.annotations?.['w7.cc/dns-profile']
+        if (this.editProfiles.some(profile => profile.id === oldProfile)) draft.profileId = oldProfile
+        else if (this.editProfiles.length === 1) draft.profileId = this.editProfiles[0].id
+      } catch (error) { if (this.editDraft === draft) this.error = error.response?.data?.message || error.message }
+      finally { if (this.editDraft === draft) this.editLoading = false }
+    },
+    finishEdit(result, draft) {
+      if (result.ingresses?.length) {
+        const saved = new Map(result.ingresses.map(item => [item.metadata.name, item]))
+        this.ingresses = this.ingresses.map(item => saved.get(item.metadata.name) || item)
+        for (const ingress of result.ingresses) if (!this.ingresses.some(item => item.metadata.name === ingress.metadata.name)) this.ingresses.push(ingress)
+      } else if (result.ingress) {
+        this.ingresses = this.ingresses.map(item => item.metadata.name === result.ingress.metadata.name ? result.ingress : item)
+      }
+      this.editDraft = null; this.editLoading = false
+      this.error = result.warning || ''
+      this.$message.success(result.unchanged ? '域名没有变化' : '域名已更新，请修改 DNS 解析' + (draft.autoHttps ? '；自动证书签发可能需要等待' : ''))
     },
     async saveEdit() {
-      if (this.locked || this.busy || this.loading || !this.editDraft || this.editDraft.uncertain) return
+      if (this.locked || this.busy || this.loading || this.editLoading || !this.editDraft || this.editDraft.uncertain || this.editDraft.oldHost === this.context.hostname) return
       this.busy = true; this.error = ''
       const draft = this.editDraft
       try {
+        if (normalizeDomain(draft.host) === String(draft.oldHost || '').trim().toLowerCase().replace(/\.$/, '')) { this.editDraft = null; this.editLoading = false; return }
         const context = await loadSiteContext()
         if (context.group !== this.context.group || context.namespace !== this.context.namespace) throw new Error('站点上下文已变化，请刷新后重试')
-        const result = await renameSiteDomain(context, draft.ingress, draft.host, draft.profileId)
-        this.ingresses = this.ingresses.map(item => item.metadata.name === result.ingress.metadata.name ? result.ingress : item)
-        this.editDraft = null
-        if (result.warning) this.error = result.warning
-        this.$message.success(result.unchanged ? '域名没有变化' : '域名已更新，请修改 DNS 解析' + (domainHttpsState(draft.ingress, draft.ingress.spec.rules[0].host).auto ? '；自动证书签发可能需要等待' : ''))
+        const result = await renameSiteDomain(context, draft.ingress, draft.host, draft.profileId, draft.oldHost)
+        this.finishEdit(result, draft)
       } catch (error) {
         this.error = error.response?.data?.message || error.message
-        if (error.uncertain) draft.uncertain = true
+        if (error.uncertain) { draft.uncertain = true; draft.pending = error.pending }
       } finally { this.busy = false }
     },
     async verifyEdit() {
@@ -124,17 +146,20 @@ export default {
       this.busy = true
       try {
         const draft = this.editDraft
-        const current = (await panelAxios.get(`${ingressApi(this.context.namespace)}/${encodeURIComponent(draft.ingress.metadata.name)}`)).data
-        if (current?.metadata?.uid !== draft.ingress.metadata.uid) throw new Error('域名资源已变化，请刷新页面检查')
-        const host = current.spec?.rules?.[0]?.host
-        if (host === normalizeDomain(draft.host)) {
-          this.ingresses = this.ingresses.map(item => item.metadata.name === current.metadata.name ? current : item)
-          this.editDraft = null
-          this.error = '新域名已提交，请修改 DNS 解析，并检查网关配置和证书状态。'
-        } else {
-          draft.uncertain = false
-          this.error = '新域名未生效，草稿已保留；请检查网关配置后重试。'
+        const context = await loadSiteContext()
+        if (context.group !== this.context.group || context.namespace !== this.context.namespace) throw new Error('站点上下文已变化，请刷新后重试')
+        const result = await verifySiteDomainRename(context, draft.pending)
+        if (result.applied === false) {
+          if (draft.ingress && result.ingress?.metadata?.uid === draft.ingress.metadata.uid
+            && canEditDomain(context, result.ingress, draft.oldHost)) {
+            draft.ingress = result.ingress
+            this.ingresses = this.ingresses.map(item => item.metadata.name === result.ingress.metadata.name ? result.ingress : item)
+          }
+          draft.uncertain = false; draft.pending = null
+          this.error = '新域名未生效，草稿已保留，请检查后重试。'
+          return
         }
+        this.finishEdit(result, draft)
       } catch (error) { this.error = error.response?.data?.message || error.message }
       finally { this.busy = false }
     },
@@ -276,6 +301,6 @@ export default {
 }
 </script>
 <style scoped>
-.domain-edit-input{flex:1;min-width:180px}.domain-edit{display:grid;gap:10px;padding:0 12px 12px}
-.domains{display:grid;gap:14px;width:510px;max-width:100%}.domain-row{display:flex;align-items:center;gap:12px;min-height:44px;border:1px solid #dcdfe6;border-radius:4px;padding:0 12px;flex-wrap:wrap}.domain-row>.el-checkbox{flex-shrink:0;margin-right:0}.domain-protocol{color:#86909c}.domain-host{flex:1;overflow-wrap:anywhere}.domain-help{font-size:12px;color:#86909c}.domain-add{width:100%;color:#0052d9}.domain-form,.domain-https{display:grid;gap:14px}.domain-entry{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.domain-entry>.el-input{flex:1 1 240px;min-width:0}.domain-entry>.el-checkbox{flex-shrink:0;margin-right:0}.domain-confirm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#fff7e6}
+.domain-edit-input{flex:1 1 200px;min-width:0}.domain-row>.el-select{width:100%}
+.domains{display:grid;gap:14px;width:510px;max-width:100%}.domain-row{display:flex;align-items:center;gap:12px;min-height:44px;flex-wrap:wrap}.domain-row>.el-checkbox{flex-shrink:0;margin-right:0}.domain-help{font-size:12px;color:#86909c}.domain-add{width:100%;color:#0052d9}.domain-form,.domain-https{display:grid;gap:14px}.domain-entry{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.domain-entry>.el-input{flex:1 1 240px;min-width:0}.domain-entry>.el-checkbox{flex-shrink:0;margin-right:0}.domain-confirm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#fff7e6}
 </style>
