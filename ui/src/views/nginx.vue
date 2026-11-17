@@ -29,8 +29,11 @@
     </div>
     <el-dialog v-model="latestDialogVisible" append-to-body align-center class="nginx-template-dialog" modal-class="nginx-template-overlay" title="应用最新 Nginx 模板" width="min(1000px, 94vw)">
       <p class="template-help">这是最近一次安装或升级生成的模板。若当前配置有自定义修改，可复制需要的内容到编辑器，手动合并后应用。</p>
-      <textarea class="template-content" :value="latestNginxConfig" readonly spellcheck="false" aria-label="应用最新 Nginx 模板，只读" />
-      <template #footer><el-button @click="latestDialogVisible = false">关闭</el-button></template>
+      <textarea ref="latestTemplateContent" class="template-content" :value="latestNginxConfig" readonly spellcheck="false" aria-label="应用最新 Nginx 模板，只读" />
+      <template #footer>
+        <el-button @click="latestDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="copyingLatestTemplate" :disabled="latestNginxConfig === null" @click="copyLatestTemplate">复制模板</el-button>
+      </template>
     </el-dialog>
   </main>
 </template>
@@ -59,6 +62,7 @@ export default {
       latestNginxConfig: null,
       latestTemplateError: '',
       latestDialogVisible: false,
+      copyingLatestTemplate: false,
       gatewayManaged: false,
       gatewayEnabled: true,
       gatewayBusy: false,
@@ -77,6 +81,26 @@ export default {
     else this.loading = false
   },
   methods: {
+    async copyLatestTemplate() {
+      if (this.latestNginxConfig === null || this.copyingLatestTemplate) return
+      this.copyingLatestTemplate = true
+      try {
+        try {
+          if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable')
+          await navigator.clipboard.writeText(this.latestNginxConfig)
+        } catch {
+          const textarea = this.$refs.latestTemplateContent
+          if (!textarea) throw new Error('Template content unavailable')
+          textarea.focus()
+          textarea.select()
+          textarea.setSelectionRange(0, textarea.value.length)
+          if (!textarea.ownerDocument.execCommand('copy')) throw new Error('Copy failed')
+        }
+        this.$message.success('模板已复制')
+      } catch {
+        this.$message.error('复制失败，请手动选中模板内容复制')
+      } finally { this.copyingLatestTemplate = false }
+    },
     async changeGateway(enabled) {
       if (this.loading || this.gatewayBusy || this.saveLoading) return
       if (enabled) return this.prepareGateway()
