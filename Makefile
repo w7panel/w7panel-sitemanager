@@ -17,9 +17,9 @@ frontend-package: ui-build
 	rm -f $(FRONTEND_PACKAGE)
 	cd $(UI_DIR)/dist && zip -rq ../../$(FRONTEND_PACKAGE) .
 helm-lint:
-	helm lint $(HELM_CHART_DIR)
+	helm lint $(HELM_CHART_DIR) --set-string DOMAIN_URL=example.com --set-string PVC_NAME=example-pvc
 helm-template:
-	helm template $(PROJECT_NAME) $(HELM_CHART_DIR) --set PVC_NAME=example-pvc
+	helm template $(PROJECT_NAME) $(HELM_CHART_DIR) --set-string DOMAIN_URL=example.com --set-string PVC_NAME=example-pvc
 helm-package: helm-lint
 	rm -f $(HELM_PACKAGE)
 	helm package $(HELM_CHART_DIR) --destination $(HELM_CHART_DIR) --version "$(HELM_CHART_VERSION)" --app-version "$(HELM_APP_VERSION)"

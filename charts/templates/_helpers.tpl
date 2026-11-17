@@ -109,6 +109,7 @@ Create the name of the service account to use
 {{- define "tradition-tool.gatewayContainer" -}}
 {{- $enabled := .enabled -}}
 {{- with .root -}}
+{{- $domain := required "DOMAIN_URL is required for the site directory mount" .Values.DOMAIN_URL -}}
 name: tradition-tool
 securityContext:
   {{- toYaml .Values.securityContext | nindent 2 }}
@@ -153,9 +154,10 @@ volumeMounts:
   - mountPath: {{.Values.global.NGINX_DIR}}
     name: site-storage
     subPath: nginx-dir
-  - mountPath: {{.Values.global.NGINX_WEB_DIR}}
+  {{/* Keep the NGINX root path while mounting only this site's code. */}}
+  - mountPath: {{ printf "%s/%s" (trimSuffix "/" .Values.global.NGINX_WEB_DIR) $domain | quote }}
     name: site-storage
-    subPath: nginx-web-dir
+    subPath: {{ printf "nginx-web-dir/%s" $domain | quote }}
 resources:
   {{- toYaml .Values.resources | nindent 2 }}
 {{- end -}}
