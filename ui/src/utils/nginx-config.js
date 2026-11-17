@@ -134,7 +134,7 @@ export function defaultGatewayNginxConfig(application, config, domain) {
   return `server {
     listen 80;
     server_name ${domain};
-    root /www/wwwroot/${domain};
+    root /www/wwwroot;
     index ${php && hasBackend ? 'index.php ' : ''}index.html index.htm;
     access_log /dev/stdout;
     error_log /dev/stderr;
