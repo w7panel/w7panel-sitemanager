@@ -628,7 +628,8 @@ test('restart patches only the main Pod template annotations and preserves every
   assert.equal(state.ctx.runtimeDraft, draft)
   assert.equal(state.ctx.$refs.domains.form, domainDraft)
   assert.equal(state.ctx.restartOperation, null)
-  assert.match(state.ctx.restartStatus, /重启成功/)
+  assert.equal(state.ctx.restartStatus, '')
+  assert.deepEqual(state.messages, [{ level: 'success', message: '应用重启成功' }])
   assert.match(state.confirmations[0].message, /未保存.*不会提交.*保留/)
 })
 
@@ -669,7 +670,7 @@ test('restart rejects concurrent changes and a recreated workload before patchin
 test('restart recovers an accepted request with a lost response without issuing another patch', async () => {
   const state = runtime({ fail: 'lost-response' })
   await state.ctx.restartApplication()
-  assert.match(state.ctx.restartStatus, /成功/)
+  assert.equal(state.ctx.restartStatus, '')
   assert.equal(state.calls.filter(call => call.method === 'PATCH').length, 1)
 })
 
@@ -693,7 +694,7 @@ test('polling network failures retain the operation and checking it later never 
   assert(state.ctx.restartOperation)
   await state.ctx.checkRestart()
   assert.equal(state.ctx.restartOperation, null)
-  assert.match(state.ctx.restartStatus, /成功/)
+  assert.equal(state.ctx.restartStatus, '')
   assert.equal(state.calls.filter(call => call.method === 'PATCH').length, 1)
 })
 

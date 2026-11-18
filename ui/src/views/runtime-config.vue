@@ -26,14 +26,6 @@
             <el-input v-if="startup.mode === 'custom'" v-model="startup.text" type="textarea" :rows="3" :disabled="runtimeBusy" aria-label="启动命令" placeholder="例如 cd /www/wwwroot &amp;&amp; npm run start" />
             <p v-if="startup.inheritedArgs" class="field-help">当前附加参数：{{ startup.inheritedArgs }}。未编辑时保留原配置。</p>
             <p class="field-help">{{ startup.mode === 'default' ? '按环境内置的启动方式运行。' : '填写完整命令，多条命令可用 && 连接。' }}</p>
-            <div class="restart-actions">
-              <el-button v-if="!restartOperation" :loading="restarting" :disabled="runtimeBusy || !!saveError || !!restartDisabledReason || !!$refs.domains?.busy" @click="restartApplication">重启应用</el-button>
-              <el-button v-else :loading="restarting" :disabled="runtimeBusy" @click="checkRestart">检查重启状态</el-button>
-              <router-link v-if="restartError" to="/site/logs">查看运行日志</router-link>
-            </div>
-            <p v-if="restartDisabledReason" class="field-help">{{ restartDisabledReason }}</p>
-            <p v-if="restartStatus" class="field-help" role="status">{{ restartStatus }}</p>
-            <el-alert v-if="restartError" :title="restartError" type="error" :closable="false" show-icon />
           </div>
         </el-form-item>
         <el-form-item label="端口">
@@ -48,8 +40,19 @@
         </el-form-item>
         <el-form-item v-if="versionChanged && systemDiskPaths.length"><el-alert type="warning" title="切换版本会重置系统盘数据，请先备份。新版本就绪后会清理旧版本目录。" :closable="false" show-icon /></el-form-item>
         <el-form-item>
-          <div><el-button type="primary" :loading="saving" :disabled="runtimeBusy || !!restartOperation || !!saveError || !!$refs.domains?.busy" @click="saveRuntime">保存并应用</el-button><el-button :disabled="runtimeBusy" @click="refreshApplication">刷新</el-button>
-            <p class="field-help">{{ saving ? savingPhase : '保存运行配置后应用会重新启动。' }}</p></div>
+          <div>
+            <div class="runtime-actions">
+              <el-button type="primary" :loading="saving" :disabled="runtimeBusy || !!restartOperation || !!saveError || !!$refs.domains?.busy" @click="saveRuntime">保存并应用</el-button>
+              <el-button v-if="!restartOperation" :loading="restarting" :disabled="runtimeBusy || !!saveError || !!restartDisabledReason || !!$refs.domains?.busy" @click="restartApplication">重启应用</el-button>
+              <el-button v-else :loading="restarting" :disabled="runtimeBusy" @click="checkRestart">检查重启状态</el-button>
+              <el-button :disabled="runtimeBusy" @click="refreshApplication">刷新</el-button>
+              <router-link v-if="restartError" to="/site/logs">查看运行日志</router-link>
+            </div>
+            <p class="field-help">{{ saving ? savingPhase : '保存运行配置后应用会重新启动。' }}</p>
+            <p v-if="restartDisabledReason" class="field-help">{{ restartDisabledReason }}</p>
+            <p v-if="restartStatus" class="field-help" role="status">{{ restartStatus }}</p>
+            <el-alert v-if="restartError" :title="restartError" type="error" :closable="false" show-icon />
+          </div>
         </el-form-item>
       </el-form>
     </template>
@@ -189,7 +192,7 @@ export default {
       })
       this.deployment = current
       this.restartOperation = null
-      this.restartStatus = '应用重启成功'
+      this.restartStatus = ''
       this.restartError = ''
       this.$message.success('应用重启成功')
       // Keep startup, version, port and domain drafts exactly as the user left them.
@@ -546,6 +549,6 @@ export default {
 </script>
 
 <style scoped>
-.restart-actions{display:flex;align-items:center;gap:16px;margin-top:12px}.restart-actions a{color:var(--el-color-primary)}
+.runtime-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.runtime-actions :deep(.el-button+.el-button){margin-left:0}.runtime-actions a{color:var(--el-color-primary)}
 .basic-config{max-width:1100px;padding:0 0 24px}.site-form :deep(.el-form-item){margin-bottom:28px}.site-form :deep(.el-form-item__content){display:block;min-width:0}.site-form :deep(.el-form-item__label){justify-content:flex-start;padding-left:12px}.site-directory{line-height:32px;overflow-wrap:anywhere}.environment-field{max-width:420px}.environment-field .el-select{width:280px}.startup-options{display:flex;gap:24px;margin-bottom:12px;flex-wrap:wrap}.startup-options label{display:flex;align-items:center;gap:6px;cursor:pointer}.field-help{font-size:13px;line-height:1.7;color:#86909c;margin:8px 0 0}.ports-field{display:grid;gap:10px;justify-items:start}.port-add{--el-button-text-color:var(--el-color-primary)}.port-row{display:flex;gap:12px}.port-row>.el-input{width:150px}@media(max-width:760px){.site-form :deep(.el-form-item__label){width:90px!important}}
 </style>
