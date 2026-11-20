@@ -80,7 +80,7 @@ job:
   affinity: {}
 
 PVC_NAME: ""
-# Same domain as the traditional application's nginx-web-dir/<domain> mount.
+# Domain used for routing; site storage is isolated by the owning Helm release.
 DOMAIN_URL: ""
 
 global:
