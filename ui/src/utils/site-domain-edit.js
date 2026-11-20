@@ -355,3 +355,34 @@ export async function renameSiteDomain(context, original, value, profileId = '',
   const remaining = await completeSource(context, pending)
   return finish(context, pending, saved, remaining)
 }
+
+
+export async function removeSiteDomain(context, original, host) {
+  const oldHost = dnsName(host)
+  if (!canEditDomain(context, original, oldHost)) throw new Error('当前域名不属于本站点，无法删除')
+  const url = `${ingressApi(context.namespace)}/${encodeURIComponent(original.metadata.name)}`
+  const current = (await panelAxios.get(url)).data
+  if (current?.metadata?.uid !== original.metadata.uid || current.metadata.resourceVersion !== original.metadata.resourceVersion)
+    throw new Error('域名已被其他操作修改，请刷新后重试')
+  if (!canEditDomain(context, current, oldHost)) throw new Error('当前域名不属于本站点，无法删除')
+  const rootName = current.metadata.labels?.['w7.cc/ingress-rootname']
+  if (rootName) {
+    const rootUrl = `${ingressApi(context.namespace)}/${encodeURIComponent(rootName)}`
+    const root = (await panelAxios.get(rootUrl)).data
+    assertDerivedRootSite(context, root)
+    const entry = derivedEntry(root, current, oldHost)
+    await panelAxios.patch(rootUrl, [
+      { op: 'test', path: '/metadata/uid', value: root.metadata.uid },
+      { op: 'test', path: '/metadata/resourceVersion', value: root.metadata.resourceVersion },
+      { op: 'replace', path: '/metadata/annotations/w7.cc~1child-hosts', value: JSON.stringify(childEntries(root).filter(item => item.name !== entry.name)) }
+    ], PATCH)
+    return
+  }
+  // Removing a parent Ingress would also delete its derived domains.
+  const remaining = remainingIngress(current, oldHost)
+  if (remaining) { await panelAxios.put(url, remaining); return }
+  if (childEntries(current).length) throw new Error('当前入口仍关联其他域名，请先在面板域名管理中解除分组，避免同时删除其他域名')
+  await panelAxios.delete(url, {
+    data: { apiVersion: 'v1', kind: 'DeleteOptions', preconditions: { uid: current.metadata.uid, resourceVersion: current.metadata.resourceVersion } }
+  })
+}

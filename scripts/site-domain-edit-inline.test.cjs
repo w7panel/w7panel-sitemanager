@@ -159,19 +159,11 @@ test('the primary domain can be edited and submitted using its original selected
   assert.equal(state.renamed[0][4], 'site.example.com')
 })
 
-test('a synthetic primary domain without an Ingress remains read-only and does not request creation options', async t => {
+test('no stale primary row is displayed after the last Ingress is removed', async t => {
   const state = await harness({ resources: [] }); t.after(() => state.app.unmount())
-  const requests = state.requests.length
-  const primary = state.ctx.rows[0]
-  assert.equal(primary.key, 'default'); assert.equal(state.input(primary.host).props.disabled, true)
-  await state.input(primary.host).props['onUpdate:modelValue']('forged.example.com')
-  await state.ctx.edit(primary, 'forged.example.com'); await state.ctx.saveEdit(); await settle()
-  assert.equal(state.ctx.editDraft, null)
-  assert.equal(state.requests.length, requests)
+  assert.equal(state.ctx.rows.length, 0)
   assert.equal(state.renamed.length, 0)
-  assert.deepEqual(Array.from(state.ctx.rows, row => row.host), ['site.example.com'])
 })
-
 test('DNS loading allows continued typing, and a canceled response cannot overwrite the next row draft', async t => {
   const first = deferred(), second = deferred(); let loads = 0
   const state = await harness({ resources: [ingress(), ingress('alias', 'alias.example.com', true), ingress('second', 'second.example.com', true)],

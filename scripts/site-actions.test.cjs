@@ -775,3 +775,56 @@ test('a primary domain previously changed in the panel can be edited again despi
   assert(!state.calls.some(call => call.url.includes('/appgroups/')))
   assert.deepEqual(state.context.appGroup.metadata.annotations, annotations)
 })
+
+
+test('a generated primary domain can be removed with resource preconditions', async () => {
+  const original = alias('primary.example.com')
+  delete original.metadata.annotations['w7.cc/site-domain']
+  const state = domains({ ingress: original })
+  let deleted
+  state.api.delete = async (url, options) => { deleted = { url, options } }
+  const contextBefore = copy(state.context.appGroup)
+  await state.removeSiteDomain(state.context, original, 'primary.example.com')
+  assert.equal(deleted.url, '/apis/networking.k8s.io/v1/namespaces/tenant/ingresses/alias')
+  assert.deepEqual(copy(deleted.options.data.preconditions), { uid: 'alias-uid', resourceVersion: '7' })
+  assert.deepEqual(state.context.appGroup, contextBefore)
+})
+
+test('removing one domain retains unrelated rules and certificates on a shared Ingress', async () => {
+  const original = alias('primary.example.com', true)
+  original.spec.rules.push({ ...copy(original.spec.rules[0]), host: 'keep.example.com' })
+  original.spec.tls.push({ hosts: ['keep.example.com'], secretName: 'keep-tls' })
+  const state = domains({ ingress: original })
+  await state.removeSiteDomain(state.context, original, 'primary.example.com')
+  assert.deepEqual(copy(state.current().spec.rules.map(rule => rule.host)), ['keep.example.com'])
+  assert.deepEqual(copy(state.current().spec.tls), [{ hosts: ['keep.example.com'], secretName: 'keep-tls' }])
+})
+
+test('domain removal rejects changed resources and parents that still own derived domains', async () => {
+  const original = alias('primary.example.com'), state = domains({ ingress: original })
+  state.setCurrent({ ...original, metadata: { ...original.metadata, resourceVersion: 'changed' } })
+  await assert.rejects(state.removeSiteDomain(state.context, original, 'primary.example.com'), /其他操作修改/)
+  const parent = alias('primary.example.com')
+  parent.metadata.annotations['w7.cc/child-hosts'] = JSON.stringify([{ name: 'keep', host: 'keep.example.com' }])
+  const grouped = domains({ ingress: parent })
+  await assert.rejects(grouped.removeSiteDomain(grouped.context, parent, 'primary.example.com'), /关联其他域名/)
+  assert(!grouped.calls.some(call => call.method === 'PUT'))
+})
+
+
+test('the generated primary row exposes deletion using the same site ownership checks as editing', () => {
+  const original = alias('primary.example.com'), state = domains({ ingress: original })
+  delete original.metadata.annotations['w7.cc/site-domain']
+  const component = state.load('components/site/DomainConfig.vue').default
+  const rows = component.computed.rows.call({ context: state.context, ingresses: [original] })
+  assert.equal(rows[0].canEdit, true)
+  assert.equal(rows[0].removable, true)
+})
+
+test('removing a derived domain updates its parent binding and retains the other entries', async () => {
+  const state = derivedDomains()
+  await state.removeSiteDomain(state.context, state.child, 'old.example.com')
+  const entries = JSON.parse(state.currentRoot().metadata.annotations['w7.cc/child-hosts'])
+  assert.deepEqual(entries, [{ name: 'other', host: 'other.example.com', autoSsl: false, sslRedirect: false, extra: 'keep' }])
+  assert.equal(state.calls.filter(call => call.method === 'PATCH').length, 1)
+})

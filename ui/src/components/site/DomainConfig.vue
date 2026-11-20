@@ -54,7 +54,7 @@ import { normalizeDomain, ingressApi, domainIngress, domainHttpsState, setAutoHt
 import { loadSiteContext } from '@/utils/site-context'
 import panelAxios from '@/utils/panel'
 import DomainParseAlert from './DomainParseAlert.vue'
-import { canEditDomain, matchingDnsProfiles, renameSiteDomain, verifySiteDomainRename } from '@/utils/site-domain-edit'
+import { canEditDomain, matchingDnsProfiles, renameSiteDomain, verifySiteDomainRename, removeSiteDomain } from '@/utils/site-domain-edit'
 export default {
   components: { DomainParseAlert },
   emits: ['refresh'],
@@ -68,12 +68,11 @@ export default {
         for (const rule of ingress.spec?.rules || []) {
           if (!rule.host || !rule.http?.paths?.some(path => services.includes(path.backend?.service?.name))) continue
           if (rows.some(row => row.key === `${ingress.metadata.name}/${rule.host}`)) continue
-          const { auto, https, simple, editable } = domainHttpsState(ingress, rule.host)
+          const { auto, https, editable } = domainHttpsState(ingress, rule.host)
           rows.push({ key: `${ingress.metadata.name}/${rule.host}`, host: rule.host, ingress, https, auto, editable, canEdit: canEditDomain(this.context, ingress, rule.host),
-            removable: simple && rule.host !== this.context.hostname && ingress.metadata.annotations?.[SITE_DOMAIN] === this.context.group })
+            removable: canEditDomain(this.context, ingress, rule.host) })
         }
       }
-      if (!rows.some(row => row.host === this.context.hostname)) rows.unshift({ key: 'default', host: this.context.hostname, https: false, canEdit: false })
       return [
         ...rows.filter(row => row.host === this.context.hostname),
         ...rows.filter(row => row.host !== this.context.hostname)
@@ -284,17 +283,15 @@ export default {
       } finally { this.busy = false }
     },
     async remove() {
-      if (this.locked || this.busy || this.editDraft || !this.removeRow?.removable || this.removeRow.host === this.context.hostname) return
+      if (this.locked || this.busy || this.editDraft || !this.removeRow?.removable) return
       this.busy = true; this.error = ''
       try {
         const row = this.removeRow
-        await panelAxios.delete(`${ingressApi(this.context.namespace)}/${encodeURIComponent(row.ingress.metadata.name)}`, {
-          data: { apiVersion: 'v1', kind: 'DeleteOptions', preconditions: { uid: row.ingress.metadata.uid, resourceVersion: row.ingress.metadata.resourceVersion } }
-        })
+        await removeSiteDomain(this.context, row.ingress, row.host)
         this.removeRow = null
         // Extra server_name entries do not route traffic after the Ingress is removed.
         // Preserve custom Nginx content rather than risk removing a still-referenced alias.
-        this.$message.success('域名已移除'); await this.load()
+        this.$message.success('域名已移除'); await this.load(); this.$emit('refresh')
       } catch (error) { this.error = error.response?.data?.message || error.message }
       finally { this.busy = false }
     },
