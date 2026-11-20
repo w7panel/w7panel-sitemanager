@@ -107,11 +107,11 @@ async function harness({ resources = [ingress(), ingress('alias', 'alias.example
   return { app, ctx, parent, context, container, inputs, input, type, requests, renamed, verified, messages, refreshed }
 }
 
-test('additional domains are inline inputs from first render while the primary domain remains read-only', async t => {
+test('additional domains are inline inputs from first render including the primary domain', async t => {
   const shared = ingress('shared', 'first.example.com'); shared.spec.rules.push(copy(ingress('x', 'second.example.com').spec.rules[0]))
   const state = await harness({ resources: [shared, ingress()] }); t.after(() => state.app.unmount())
   assert.deepEqual(state.inputs().map(valueOf), ['site.example.com', 'first.example.com', 'second.example.com'])
-  assert.equal(state.input('site.example.com').props.disabled, true)
+  assert.equal(state.input('site.example.com').props.disabled, false)
   assert.equal(state.input('first.example.com').props.disabled, false)
   assert.equal(state.input('second.example.com').props.disabled, false)
   assert.equal(findAll(state.container, target => target.tag === 'el-button' && textOf(target) === '编辑').length, 0)
@@ -135,7 +135,7 @@ test('cancel restores the original inline alias value and releases the other edi
   assert.equal(valueOf(state.input('alias.example.com')), 'alias.example.com')
   assert.equal(state.input('alias.example.com').props.disabled, false)
   assert.equal(state.input('other.example.com').props.disabled, false)
-  assert.equal(state.input('site.example.com').props.disabled, true)
+  assert.equal(state.input('site.example.com').props.disabled, false)
   assert.equal(state.renamed.length, 0)
 })
 
@@ -150,20 +150,13 @@ test('save failure keeps the same inline input and draft for correction or retry
   assert.equal(state.ctx.hasDraft(), true)
 })
 
-test('the primary domain cannot be edited or saved even when an input event or forged draft bypasses the control', async t => {
+test('the primary domain can be edited and submitted using its original selected host', async t => {
   const state = await harness(); t.after(() => state.app.unmount())
-  const primary = state.ctx.rows.find(row => row.host === 'site.example.com')
-  const requests = state.requests.length
-  assert.equal(state.input(primary.host).props.disabled, true)
-  await state.input(primary.host).props['onUpdate:modelValue']('forged.example.com')
-  await state.ctx.edit(primary, 'forged.example.com')
-  assert.equal(state.ctx.editDraft, null)
-  state.ctx.editDraft = { key: primary.key, oldHost: primary.host, host: 'forged.example.com', ingress: primary.ingress,
-    profileId: '', uncertain: false, autoHttps: false }
+  await state.type('site.example.com', 'new.example.com')
   await state.ctx.saveEdit(); await settle()
-  assert.equal(state.renamed.length, 0)
-  assert.equal(state.requests.length, requests, 'main-domain edits must not load options or submit requests')
-  assert.equal(state.ctx.rows[0].host, 'site.example.com')
+  assert.equal(state.renamed.length, 1)
+  assert.equal(state.renamed[0][2], 'new.example.com')
+  assert.equal(state.renamed[0][4], 'site.example.com')
 })
 
 test('a synthetic primary domain without an Ingress remains read-only and does not request creation options', async t => {

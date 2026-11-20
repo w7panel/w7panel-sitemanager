@@ -1,9 +1,9 @@
 <template>
-  <main class="basic-config" v-loading="loading">
+  <main class="basic-config" v-loading="loading || saving" :element-loading-text="saving ? savingPhase : '正在加载配置'" :aria-busy="loading || saving">
     <el-alert v-if="loadError || saveError" :title="loadError || saveError" type="error" :closable="false" show-icon><el-button @click="deployment ? refreshApplication() : loadApplication()">重试</el-button></el-alert>
     <template v-if="deployment && !loadError">
       <el-form label-width="116px" class="site-form" @submit.prevent>
-        <el-form-item label="域名" required><DomainConfig ref="domains" :context="context" :locked="runtimeBusy" :inert="runtimeBusy ? '' : null" /></el-form-item>
+        <el-form-item label="域名" required><DomainConfig @refresh="$emit('refresh')" ref="domains" :context="context" :locked="runtimeBusy" :inert="runtimeBusy ? '' : null" /></el-form-item>
         <el-form-item label="目录">
           <div class="site-directory" aria-label="站点目录">{{ context.directory?.path || '无法确定站点目录' }}</div>
           <p v-if="context.directoryError" class="field-help">{{ context.directoryError }}</p>

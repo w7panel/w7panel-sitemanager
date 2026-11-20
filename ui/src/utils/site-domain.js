@@ -80,7 +80,7 @@ export function setAutoHttps(ingress, enabled, dnsAnnotations = {}) {
   return body
 }
 
-export async function nginxDomainChange(context, host, add = true) {
+export async function nginxDomainChange(context, host, add = true, sourceHost = context.hostname) {
   if (!context.gatewayEnabled) return null
   const tool = context.tool
   const container = tool?.spec?.template?.spec?.containers?.find(item => item.name === context.gateway?.variants?.enabled?.name)
@@ -91,9 +91,9 @@ export async function nginxDomainChange(context, host, add = true) {
   const pod = pods.find(item => !item.metadata.deletionTimestamp && item.status?.phase === 'Running'
     && item.status.containerStatuses?.some(status => status.name === container.name && status.state?.running))
   if (!pod) throw new Error('网关容器尚未运行，请恢复后重试')
-  const filename = `${context.hostname}.conf`
+  const filename = `${context.group}.conf`
   const original = String((await panelAxios.exec(container.name, pod.metadata.name, `${requireNginxConfigFileCommand(filename)}\ncat "$CONF_FILE"`)).data ?? '')
-  const content = updateNginxDomain(original, context.hostname, host, add)
+  const content = updateNginxDomain(original, sourceHost, host, add)
   if (content === original) return null
   async function read() {
     return String((await panelAxios.exec(container.name, pod.metadata.name, `${requireNginxConfigFileCommand(filename)}\ncat "$CONF_FILE"`)).data ?? '')

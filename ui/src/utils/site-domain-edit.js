@@ -5,10 +5,9 @@ const clone = value => JSON.parse(JSON.stringify(value))
 const dnsName = value => String(value || '').toLowerCase().replace(/\.$/, '')
 const detail = error => error.response?.data?.message || error.message || '域名更新失败'
 const PATCH = { headers: { 'Content-Type': 'application/json-patch+json' } }
-const isPrimary = (context, host) => dnsName(context.hostname) === dnsName(host)
 
 export function canEditDomain(context, ingress, host) {
-  if (!dnsName(host) || isPrimary(context, host) || !ingress) return false
+  if (!dnsName(host) || !ingress) return false
   if (!ingress.metadata?.uid || !ingress.metadata.resourceVersion
     || (ingress.metadata.namespace && ingress.metadata.namespace !== context.namespace)) return false
   const owner = ingress.metadata.annotations?.[SITE_DOMAIN]
@@ -138,7 +137,7 @@ async function renameDerivedDomain(context, current, host, oldHost, profileId, a
     { op: 'replace', path: '/metadata/annotations/w7.cc~1child-hosts', value: JSON.stringify(entries) }
   ]
   try {
-    await nginxDomainChange(context, host)
+    await nginxDomainChange(context, host, true, oldHost)
     try { await panelAxios.patch(`${ingressApi(context.namespace)}/${encodeURIComponent(rootName)}`, patch, PATCH) }
     catch (error) {
       const observed = await readDerivedRoot(context, pending)
@@ -198,12 +197,12 @@ async function completeSource(context, pending, verify = false) {
 async function finish(context, pending, saved, source = null) {
   let warning = pending.warning || ''
   if (pending.retainedAlias) warning += (warning ? '；' : '') + '旧入口还关联其他域名的证书，已保留旧域名别名，请在面板域名管理中调整。'
-  if (context.gatewayEnabled && !isPrimary(context, pending.oldHost)) {
+  if (context.gatewayEnabled) {
     try {
       const references = (await panelAxios.get(ingressApi(context.namespace))).data?.items
       if (!Array.isArray(references)) throw new Error('域名列表读取失败')
       if (!references.some(item => item.spec?.rules?.some(rule => dnsName(rule.host) === pending.oldHost)))
-        await nginxDomainChange(context, pending.oldHost, false)
+        await nginxDomainChange(context, pending.oldHost, false, pending.host)
     } catch { warning += (warning ? '；' : '') + '新域名已保存，旧域名的网关别名未清理，请在网关配置中检查。' }
   }
   return { ingress: clone(saved), ...(source ? { ingresses: [clone(source), clone(saved)] } : {}), warning, unchanged: false }
@@ -212,7 +211,6 @@ async function finish(context, pending, saved, source = null) {
 export async function verifySiteDomainRename(context, pending) {
   if (!pending?.body?.metadata?.name || pending.namespace !== context.namespace || pending.group !== context.group)
     throw new Error('域名提交信息不完整，请刷新检查')
-  if (isPrimary(context, pending.oldHost) || isPrimary(context, pending.host)) throw new Error('主域名不支持修改')
   if (pending.derived) {
     const observed = await readDerivedRoot(context, pending)
     if (!sameDerivedEntry(observed.entry, pending.derived.entry)) {
@@ -244,7 +242,6 @@ export async function verifySiteDomainRename(context, pending) {
 
 export async function renameSiteDomain(context, original, value, profileId = '', selectedHost = original?.spec?.rules?.[0]?.host || context.hostname) {
   const oldHost = dnsName(selectedHost), host = normalizeDomain(value)
-  if (isPrimary(context, oldHost) || isPrimary(context, host)) throw new Error('主域名不支持修改')
   if (!canEditDomain(context, original, oldHost)) throw new Error('未找到当前站点对应的域名路由，请刷新后重试')
   if (host === oldHost) return { ingress: original, warning: '', unchanged: true }
   const base = ingressApi(context.namespace)
@@ -330,7 +327,7 @@ export async function renameSiteDomain(context, original, value, profileId = '',
   const url = `${base}/${encodeURIComponent(body.metadata.name)}`
   let undoNginx = null, saved
   try {
-    undoNginx = await nginxDomainChange(context, host)
+    undoNginx = await nginxDomainChange(context, host, true, oldHost)
     saved = (source ? await panelAxios.post(base, body) : await panelAxios.put(url, body)).data
     if (!acceptedIngress(saved, pending)) throw new Error('域名更新响应不完整')
   } catch (error) {

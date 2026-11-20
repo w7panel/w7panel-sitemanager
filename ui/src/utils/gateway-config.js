@@ -1,7 +1,6 @@
 import { readSelection, RUNTIME_CONFIG } from './runtime-config'
 import { ingressBackendPatch } from './ingress-config'
 import { requiresFastcgi } from './site-http'
-import { withIngressDomains } from './nginx-domain'
 import { defaultGatewayNginxConfig, readGatewayNginxConfigCommand, saveNginxConfigCommand, validateNginxConfigCommand, checkNginxValidation } from './nginx-config'
 
 const DEPLOYMENTS = '/apis/apps/v1/namespaces/default/deployments'
@@ -92,7 +91,7 @@ export class GatewayController {
     const config = gatewayConfig(application, tool, service)
     const domain = new URL(appGroup.metadata?.annotations?.['w7.cc/default-domain'] || '')
     if (!['http:', 'https:'].includes(domain.protocol)) throw new Error('应用默认域名不正确')
-    this.state = { application, tool, config, initialNginxConfig: defaultGatewayNginxConfig(application, config, domain.hostname), fileName: `${domain.hostname}.conf` }
+    this.state = { application, tool, config, initialNginxConfig: defaultGatewayNginxConfig(application, config, domain.hostname), fileName: `${this.group}.conf` }
     return this.state
   }
   async patchTool(container, operation, preserve = true) {
@@ -166,7 +165,6 @@ export class GatewayController {
       if (output.startsWith('EXISTING\n')) { content = output.slice('EXISTING\n'.length); exists = true }
       else if (output === 'MISSING\n') { content = this.state.initialNginxConfig; exists = false }
       else throw new Error('Nginx 配置读取结果不正确，请重试')
-      content = withIngressDomains(content, fileName.replace(/\.conf$/, ''), ingresses, config)
       this.prepared = { fileName, operation, toolUID: tool.metadata.uid }
       return { ...pod, fileName, content, exists }
     } finally { this.onPhase('') }
@@ -195,9 +193,8 @@ export class GatewayController {
         let activeOperation = tool.spec.template.metadata?.labels?.[OPERATION]
         const pod = await this.waitForTool(activeOperation, false)
         this.onPhase(saveConfig ? '保存配置并校验 Nginx 语法' : '校验 Nginx 语法')
-        const preparedContent = saveConfig ? withIngressDomains(content, fileName.replace(/\.conf$/, ''), ingresses, config) : content
         const response = await this.api.exec(pod.containerName, pod.podName, saveConfig
-          ? saveNginxConfigCommand(preparedContent, fileName, { allowCreate: true })
+          ? saveNginxConfigCommand(content, fileName, { allowCreate: true })
           : validateNginxConfigCommand())
         checkNginxValidation(response.data)
         nginxConfigSaved = saveConfig

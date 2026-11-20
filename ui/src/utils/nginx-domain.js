@@ -26,24 +26,30 @@ export function updateNginxDomain(content, primary, domain, add = true) {
     const raw = content.slice(start, i)
     tokens.push({ value: raw.replace(/^(["'])(.*)\1$/, '$2'), raw, start, end: i })
   }
-  const stack = [], candidates = []
+  const stack = [], candidates = [], defaults = []
   let statement = []
   for (const token of tokens) {
-    if (token.value === '{') { stack.push({ kind: statement[0]?.value, names: [] }); statement = []; continue }
+    if (token.value === '{') { stack.push({ kind: statement[0]?.value, names: [], defaultServer: false }); statement = []; continue }
     if (token.value === '}') {
       const block = stack.pop()
-      if (block?.kind === 'server' && block.names.some(item => item.names.some(name => name.value === primary))) candidates.push(block)
+      if (block?.kind === 'server') {
+        if (block.names.some(item => item.names.some(name => name.value === primary))) candidates.push(block)
+        else if (block.defaultServer) defaults.push(block)
+      }
       statement = []; continue
     }
     if (token.value === ';') {
       const block = stack[stack.length - 1]
+      if (block?.kind === 'server' && statement[0]?.value === 'listen' && statement.some(item => item.value === 'default_server')) block.defaultServer = true
       if (block?.kind === 'server' && statement[0]?.value === 'server_name') block.names.push({ keyword: statement[0], names: statement.slice(1), end: token.start })
       statement = []; continue
     }
     statement.push(token)
   }
+  if (!candidates.length) candidates.push(...defaults)
   if (candidates.length !== 1 || candidates[0].names.length !== 1) throw new Error('无法唯一定位当前站点的 server_name，请先在网关配置中调整域名')
   const directive = candidates[0].names[0]
+  if (candidates[0].defaultServer) return content
   const matches = directive.names.filter(token => token.value === host)
   if (add) {
     if (matches.length) return content
@@ -53,14 +59,4 @@ export function updateNginxDomain(content, primary, domain, add = true) {
   let result = content
   for (const token of matches.reverse()) result = result.slice(0, token.start) + result.slice(token.end)
   return result
-}
-
-// Include aliases created while the gateway was disabled before switching Ingress.
-export function withIngressDomains(content, primary, ingresses, config) {
-  const services = [config.applicationService, config.toolService]
-  const hosts = new Set(ingresses.flatMap(ingress => (ingress.spec?.rules || [])
-    .filter(rule => rule.host && rule.host !== primary && rule.http?.paths?.some(path => services.includes(path.backend?.service?.name)))
-    .map(rule => rule.host)))
-  for (const host of hosts) content = updateNginxDomain(content, primary, host)
-  return content
 }

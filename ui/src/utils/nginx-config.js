@@ -13,7 +13,7 @@ CONF_FILE="$CONF_DIR/${configFileName}"`
 
 export function requireNginxConfigFileCommand(configFileName) {
   return `${nginxConfigPathCommand(configFileName)}
-[ -f "$CONF_FILE" ] || { echo "未找到默认域名对应的 Nginx 配置文件: $CONF_FILE" >&2; exit 1; }`
+[ -f "$CONF_FILE" ] || { echo "未找到当前应用的 Nginx 配置文件: $CONF_FILE" >&2; exit 1; }`
 }
 
 // A prefix distinguishes an absent file from an existing, deliberately empty file.
@@ -132,7 +132,7 @@ export function defaultGatewayNginxConfig(application, config, domain) {
         return 404;
     }`
   return `server {
-    listen 80;
+    listen 80 default_server;
     server_name ${domain};
     root /www/wwwroot;
     index ${php && hasBackend ? 'index.php ' : ''}index.html index.htm;

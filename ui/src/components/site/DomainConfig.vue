@@ -4,7 +4,7 @@
     <el-alert v-if="error" type="error" :title="error" :closable="false" show-icon />
     <template v-for="row in rows" :key="row.key">
       <div class="domain-row">
-        <el-input :model-value="editDraft?.key === row.key ? editDraft.host : row.host" class="domain-edit-input" :readonly="row.host === context.hostname" :disabled="domainInputDisabled(row)" :spellcheck="false" :aria-label="`域名 ${row.host}`" @update:model-value="value => edit(row, value)" @keyup.enter="saveEdit" @keyup.esc="cancelEdit">
+        <el-input :model-value="editDraft?.key === row.key ? editDraft.host : row.host" class="domain-edit-input" :disabled="domainInputDisabled(row)" :spellcheck="false" :aria-label="`域名 ${row.host}`" @update:model-value="value => edit(row, value)" @keyup.enter="saveEdit" @keyup.esc="cancelEdit">
           <template #prepend>{{ row.https ? 'https://' : 'http://' }}</template>
         </el-input>
         <el-checkbox :model-value="!!row.auto" :disabled="locked || busy || loading || !!httpsDraft || !!removeRow || !!editDraft || !row.editable" :aria-label="`${row.host} 自动HTTPS`" @change="(enabled, event) => toggleHttps(row, enabled, event)">自动HTTPS</el-checkbox>
@@ -57,6 +57,7 @@ import DomainParseAlert from './DomainParseAlert.vue'
 import { canEditDomain, matchingDnsProfiles, renameSiteDomain, verifySiteDomainRename } from '@/utils/site-domain-edit'
 export default {
   components: { DomainParseAlert },
+  emits: ['refresh'],
   props: { context: { type: Object, required: true }, locked: { type: Boolean, default: false } },
   data: () => ({ loading: false, busy: false, error: '', ingresses: [],
     classes: [], profiles: [], whiteList: [], optionsReady: false, form: null, removeRow: null, httpsDraft: null, editDraft: null, editLoading: false }),
@@ -85,7 +86,7 @@ export default {
   mounted() { this.load() },
   methods: {
     domainInputDisabled(row) {
-      return row.host === this.context.hostname || !row.canEdit || this.locked || this.busy || this.loading || !!this.form || !!this.httpsDraft || !!this.removeRow
+      return !row.canEdit || this.locked || this.busy || this.loading || !!this.form || !!this.httpsDraft || !!this.removeRow
         || (!!this.editDraft && (this.editDraft.key !== row.key || this.editDraft.uncertain))
     },
     cancelEdit() { if (!this.busy && !this.locked && !this.editDraft?.uncertain) { this.editDraft = null; this.editLoading = false } },
@@ -124,10 +125,11 @@ export default {
       }
       this.editDraft = null; this.editLoading = false
       this.error = result.warning || ''
+      this.$emit('refresh')
       this.$message.success(result.unchanged ? '域名没有变化' : '域名已更新，请修改 DNS 解析' + (draft.autoHttps ? '；自动证书签发可能需要等待' : ''))
     },
     async saveEdit() {
-      if (this.locked || this.busy || this.loading || this.editLoading || !this.editDraft || this.editDraft.uncertain || this.editDraft.oldHost === this.context.hostname) return
+      if (this.locked || this.busy || this.loading || this.editLoading || !this.editDraft || this.editDraft.uncertain) return
       this.busy = true; this.error = ''
       const draft = this.editDraft
       try {

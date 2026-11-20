@@ -23,9 +23,9 @@ const { normalizeDomain, updateNginxDomain, domainBackend, domainIngress, setAut
 const { gatewayConfig, gatewayIngressPatches } = load('utils/gateway-config.js')
 const { requiresFastcgi } = load('utils/site-http.js')
 const { startupDraft, resolveStartup } = load('utils/runtime-config.js')
-const group = { apiVersion: 'w7panel.w7.com/v1alpha1', metadata: { uid: 'group-uid', annotations: { 'w7.cc/default-domain': 'https://site.example.com' } } }
+const group = { apiVersion: 'w7panel.w7.com/v1alpha1', metadata: { name: 'site', uid: 'group-uid', annotations: { 'w7.cc/default-domain': 'https://site.example.com' } } }
 const app = () => ({ metadata: { name: 'site', namespace: 'tenant' }, spec: { template: { spec: { containers: [
-  { name: 'sidecar', image: 'helper', volumeMounts: [] }, { name: 'web', image: 'node:22', volumeMounts: [{ name: 'data', subPath: 'nginx-web-dir/site.example.com', mountPath: '/www/wwwroot' }] }
+  { name: 'sidecar', image: 'helper', volumeMounts: [] }, { name: 'web', image: 'node:22', volumeMounts: [{ name: 'data', subPath: 'nginx-web-dir/site', mountPath: '/www/wwwroot' }] }
 ], volumes: [{ name: 'data', persistentVolumeClaim: { claimName: 'site-data' } }] } } } })
 test('legacy and current routes resolve to the same site workspace', () => {
   for (const [input, expected] of [['#/', '/site/basic'], ['#/version', '/site/basic'], ['/nginx', '/site/gateway'], ['https://host/tool/#/files', '/site/files'], ['#/site/files', '/site/files'], ['#/site/terminal', '/site/terminal'], ['#/site/logs', '/site/logs'], ['/environment', '/environment']]) assert.equal(resolveSiteRoute(input), expected)
@@ -95,13 +95,6 @@ test('Kubernetes requests and exec use the panel namespace', async () => {
   assert.equal(intercept({ url: '/apis/cert-manager.io/v1/namespaces/tenant/certificates' }).url, '/k8s-proxy/apis/cert-manager.io/v1/namespaces/tenant/certificates')
   await exports.default.exec('web', 'site-pod', 'pwd'); assert.equal(calls[0].data.namespace, 'tenant')
 })
-test('enabling a gateway includes aliases created while it was disabled', () => {
-  const { withIngressDomains } = load('utils/nginx-domain.js')
-  const config = 'server { server_name site.example.com; location / { proxy_pass http://site; } }'
-  const ingresses = [{ spec: { rules: [{ host: 'alias.example.com', http: { paths: [{ backend: { service: { name: 'site' } } }] } }, { host: 'unrelated.com', http: { paths: [{ backend: { service: { name: 'other' } } }] } }] } }]
-  const updated = withIngressDomains(config, 'site.example.com', ingresses, { applicationService: 'site', toolService: 'tool' })
-  assert.match(updated, /server_name site.example.com alias.example.com;/); assert.ok(!updated.includes('unrelated.com'))
-})
 test('PHP HTTP startup uses an HTTP upstream when preparing gateway configuration', () => {
   const { defaultGatewayNginxConfig } = load('utils/nginx-config.js')
   const application = app(); application.spec.template.spec.containers[1] = { name: 'web', image: 'php:8.3', command: ['php', '-S', '0.0.0.0:8080'] }
@@ -143,4 +136,30 @@ test('invalid directory, unsupported container and missing host do not navigate'
   application.spec.template.spec.containers.reverse()
   await assert.rejects(openSiteFiles({ group: 'site', application, directory: { containerName: 'web', path: '/www' } }, {}), /从面板打开/)
   assert.equal(navigated, false)
+})
+
+
+test('a default nginx server keeps its named domains after external Ingress changes', () => {
+  const content = 'server { listen 80 default_server; server_name old.example.com alias.example.com; root /www/wwwroot; }'
+  assert.equal(updateNginxDomain(content, 'externally-renamed.example.com', 'another.example.com'), content)
+  assert.equal(updateNginxDomain(content, 'externally-renamed.example.com', 'alias.example.com', false), content)
+})
+
+
+test('a named custom service is selected ahead of the default site during an explicit rename', () => {
+  const content = 'server { listen 80 default_server; server_name main.example.com; } server { listen 80; server_name api.example.com; location / { proxy_pass http://api:8080; } }'
+  const added = updateNginxDomain(content, 'api.example.com', 'new-api.example.com')
+  assert.equal(added, content.replace('server_name api.example.com;', 'server_name api.example.com new-api.example.com;'))
+  const cleaned = updateNginxDomain(added, 'new-api.example.com', 'api.example.com', false)
+  assert(cleaned.includes('server_name main.example.com;'))
+  assert(!cleaned.includes('server_name api.example.com'))
+  assert(cleaned.includes('proxy_pass http://api:8080;'))
+})
+
+const { defaultGatewayNginxConfig } = load('utils/nginx-config.js')
+test('default gateway preserves the configured server name and uses a default listener with the fixed site mount', () => {
+  const content = defaultGatewayNginxConfig(app(), { applicationService: 'site', applicationPort: 8080 }, 'site.example.com')
+  assert(content.includes('listen 80 default_server;'))
+  assert(content.includes('server_name site.example.com;'))
+  assert(content.includes('root /www/wwwroot;'))
 })

@@ -164,27 +164,20 @@ test('automatic multi-domain certificates retain unrelated TLS and replace only 
   assert.deepEqual(copy(saved.spec.rules[1]), original.spec.rules[1])
 })
 
-test('primary domains stay read-only and cannot issue any API or gateway request', async () => {
-  for (const original of [alias('primary.example.com'), alias('PRIMARY.EXAMPLE.COM.'), null]) {
-    const state = domains({ ingress: original, gateway: true })
-    const host = original?.spec.rules[0].host || state.context.hostname
-    assert.equal(state.canEditDomain(state.context, original, host), false)
-    await assert.rejects(state.renameSiteDomain(state.context, original, 'new.example.com', '', host), /主域名不支持修改/)
-    assert.equal(state.calls.length, 0)
-    assert.equal(state.gatewayCalls.length, 0)
-  }
+test('primary domains can be renamed without updating the panel default address', async () => {
+  const original = alias('primary.example.com'), state = domains({ ingress: original })
+  const annotations = copy(state.context.appGroup.metadata.annotations)
+  assert.equal(state.canEditDomain(state.context, original, 'primary.example.com'), true)
+  const result = await state.renameSiteDomain(state.context, original, 'new.example.com')
+  assert.equal(result.ingress.spec.rules[0].host, 'new.example.com')
+  assert(!state.calls.some(call => call.url.includes('/appgroups/')))
+  assert.deepEqual(state.context.appGroup.metadata.annotations, annotations)
 })
 
-test('an alias cannot be renamed to the primary hostname or resume a primary edit', async () => {
-  const state = domains({ gateway: true })
-  await assert.rejects(state.renameSiteDomain(state.context, alias(), 'PRIMARY.EXAMPLE.COM.'), /主域名不支持修改/)
-  for (const [oldHost, host] of [['primary.example.com', 'new.example.com'], ['old.example.com', 'primary.example.com']]) {
-    const pending = { namespace: 'tenant', group: 'site', body: alias(), oldHost, host }
-    await assert.rejects(state.verifySiteDomainRename(state.context, pending), /主域名不支持修改/)
-  }
+test('an alias cannot replace an existing primary Ingress and absent routes remain uneditable', async () => {
+  const state = domains({ others: [alias('primary.example.com')] })
+  await assert.rejects(state.renameSiteDomain(state.context, alias(), 'PRIMARY.EXAMPLE.COM.'), /已经存在/)
   assert.equal(state.canEditDomain(state.context, null, 'old.example.com'), false)
-  assert.equal(state.calls.length, 0)
-  assert.equal(state.gatewayCalls.length, 0)
 })
 
 function sharedAutomaticIngress({ sharedTls = false, onlyTargetRule = false, dns = true } = {}) {
@@ -471,15 +464,16 @@ test('an isolated domain drops copied child-tree configuration and Ingress owner
   assert.deepEqual(copy(retained.spec.defaultBackend), original.spec.defaultBackend)
 })
 
-test('the row editor rejects the primary hostname and exposes custom-domain edits to the leave guard', async () => {
+test('the row editor tracks primary and alias drafts in the leave guard', async () => {
   const state = domains(), component = state.load('components/site/DomainConfig.vue').default
   const ctx = { ...component.data(), context: state.context, locked: false }
   for (const [name, method] of Object.entries(component.methods)) ctx[name] = method.bind(ctx)
   for (const [name, computed] of Object.entries(component.computed)) Object.defineProperty(ctx, name, { get: computed.bind(ctx) })
   const primary = alias('primary.example.com')
   await ctx.edit({ key: 'primary/primary.example.com', host: 'primary.example.com', canEdit: true, ingress: primary })
-  assert.equal(ctx.editDraft, null)
-  assert.equal(ctx.hasDraft(), false)
+  assert.equal(ctx.editDraft.host, 'primary.example.com')
+  assert.equal(ctx.hasDraft(), true)
+  ctx.cancelEdit()
   await ctx.edit({ key: 'alias/old.example.com', host: 'old.example.com', canEdit: true, ingress: alias(), auto: false })
   assert.equal(ctx.editDraft.host, 'old.example.com')
   assert.equal(ctx.hasDraft(), true)
@@ -741,4 +735,43 @@ test('gateway file writes preserve literal content, reject changed files and res
   const result = run(original, true)
   assert.match(result.stdout, /W7_NGINX_VALIDATION_FAILED/)
   assert.equal(fs.readFileSync(filename, 'utf8'), original)
+})
+
+
+test('loading site context reads a domain changed in the panel and keeps release-based storage', async () => {
+  const app = { metadata: { name: 'site' }, spec: { template: { spec: {
+    containers: [{ name: 'web', volumeMounts: [{ name: 'site-storage', subPath: 'nginx-web-dir/site', mountPath: '/www/wwwroot' }] }],
+    volumes: [{ name: 'site-storage', persistentVolumeClaim: { claimName: 'shared' } }]
+  } } } }
+  const group = { metadata: { name: 'site', annotations: { 'w7.cc/default-domain': 'https://old.example.com' } }, status: { items: [{ kind: 'Deployment', name: 'site' }] } }
+  const api = { async get(url) {
+    if (url.includes('/appgroups/')) return { data: group }
+    if (url.includes('/deployments/')) return { data: app }
+    if (url.includes('/services/')) throw { response: { status: 404 } }
+    if (url.endsWith('/ingresses')) return { data: { items: [alias('panel-change.example.com')] } }
+    throw new Error('unexpected ' + url)
+  } }
+  const { loadSiteContext } = loader(api)('utils/site-context.js')
+  const context = await loadSiteContext()
+  assert.equal(context.hostname, 'panel-change.example.com')
+  assert.equal(context.directory.subPath, 'nginx-web-dir/site')
+})
+
+
+test('nginx editing uses a release-based filename without looking up the default domain', async () => {
+  const load = loader({}, { '@/components/Editor.vue': { default: {} }, 'element-plus': { ElMessageBox: {} } })
+  const component = load('views/nginx.vue').default
+  const filename = await component.methods.getNginxConfigFileName.call({ getAppgroupName: () => 'site-release' })
+  assert.equal(filename, 'site-release.conf')
+})
+
+
+test('a primary domain previously changed in the panel can be edited again despite an older default-address annotation', async () => {
+  const original = alias('panel-change.example.com'), state = domains({ ingress: original })
+  state.context.hostname = 'panel-change.example.com'
+  const annotations = copy(state.context.appGroup.metadata.annotations)
+  const result = await state.renameSiteDomain(state.context, original, 'next.example.com')
+  assert.equal(result.ingress.spec.rules[0].host, 'next.example.com')
+  assert(!state.calls.some(call => call.url.includes('/appgroups/')))
+  assert.deepEqual(state.context.appGroup.metadata.annotations, annotations)
 })

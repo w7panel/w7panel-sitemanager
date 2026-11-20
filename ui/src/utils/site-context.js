@@ -14,7 +14,7 @@ export function defaultHostname(appGroup) {
 }
 
 export function resolveSiteDirectory(application, appGroup) {
-  const hostname = defaultHostname(appGroup)
+  const release = appGroup.metadata.name
   const spec = application?.spec?.template?.spec || {}
   const candidates = []
   for (const container of spec.containers || []) {
@@ -23,7 +23,7 @@ export function resolveSiteDirectory(application, appGroup) {
       if (!volume?.persistentVolumeClaim?.claimName || mount.subPathExpr || !mount.mountPath?.startsWith('/')) continue
       const subPath = (mount.subPath || '').replace(/^\/+|\/+$/g, '')
       if (subPath.split('/').includes('..')) continue
-      if (subPath !== `nginx-web-dir/${hostname}`) continue
+      if (subPath !== `nginx-web-dir/${release}`) continue
       candidates.push({ containerName: container.name, path: mount.mountPath.replace(/\/+$/, '') || '/',
         pvcName: volume.persistentVolumeClaim.claimName, subPath })
     }
@@ -54,7 +54,15 @@ export async function loadSiteContext() {
     try { gateway = gatewayConfig(application, tool, service) } catch (error) { gatewayError = error.message }
   }
   const legacyEnabled = !!tool && !/(^|\/)pause(?::|@|$)/.test(tool.spec?.template?.spec?.containers?.[0]?.image || '')
+  const ingresses = (await panelAxios.get(`/apis/networking.k8s.io/v1/namespaces/${ns}/ingresses`)).data?.items
+  if (!Array.isArray(ingresses)) throw new Error('域名列表读取失败')
+  const services = [application.metadata.name, tool?.metadata?.name].filter(Boolean)
+  const entries = ingresses.flatMap(ingress => (ingress.spec?.rules || [])
+    .filter(rule => rule.host && rule.http?.paths?.some(path => services.includes(path.backend?.service?.name)))
+    .map(rule => ({ host: rule.host, child: !!ingress.metadata.labels?.['w7.cc/ingress-rootname'] })))
+  const declaredHostname = defaultHostname(appGroup)
+  const hostname = entries.some(entry => entry.host === declaredHostname) ? declaredHostname : (entries.find(entry => !entry.child) || entries[0])?.host || declaredHostname
   return { ...identity, appGroup, application, service, tool, directory, directoryError, gateway, gatewayError,
-    hostname: defaultHostname(appGroup), gatewayAvailable: declared || legacyEnabled || !!gatewayError,
+    hostname, gatewayAvailable: declared || legacyEnabled || !!gatewayError,
     gatewayEnabled: gateway?.enabled ?? legacyEnabled }
 }

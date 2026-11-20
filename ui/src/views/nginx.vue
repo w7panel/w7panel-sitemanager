@@ -45,8 +45,6 @@ import { ElMessageBox } from 'element-plus'
 import { GatewayController, GATEWAY_CONTAINERS } from '@/utils/gateway-config'
 import { latestNginxTemplateCommand, requireNginxConfigFileCommand, saveNginxConfigCommand, checkNginxValidation } from '@/utils/nginx-config'
 
-const APPGROUP_API = '/apis/w7panel.w7.com/v1alpha1/namespaces/default/appgroups'
-const DEFAULT_DOMAIN_ANNOTATION = 'w7.cc/default-domain'
 
 export default {
   name: 'NginxConfig',
@@ -207,23 +205,8 @@ export default {
       const appgroup = this.getAppgroupName()
       if (!appgroup) throw new Error('未获取到 AppGroup 名称')
 
-      const manifestResponse = await panelAxios.get(`${APPGROUP_API}/${encodeURIComponent(appgroup)}`)
-      const defaultDomain = String(
-        manifestResponse.data?.metadata?.annotations?.[DEFAULT_DOMAIN_ANNOTATION] || ''
-      ).trim()
-      if (!defaultDomain) throw new Error(`AppGroup 缺少 ${DEFAULT_DOMAIN_ANNOTATION} 注解`)
-
-      let domain
-      try {
-        const url = new URL(defaultDomain)
-        if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol')
-        domain = url.hostname
-      } catch {
-        throw new Error(`${DEFAULT_DOMAIN_ANNOTATION} 注解不是有效的 HTTP(S) 地址`)
-      }
-      if (!domain) throw new Error(`未能从 ${DEFAULT_DOMAIN_ANNOTATION} 注解中获取域名`)
-
-      return `${domain}.conf`
+      if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(appgroup)) throw new Error('AppGroup 名称不合法')
+      return `${appgroup}.conf`
     },
     async getNginxContainer() {
       const deploymentName = this.getNginxDeploymentName()
