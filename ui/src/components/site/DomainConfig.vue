@@ -301,6 +301,11 @@ export default {
 }
 </script>
 <style scoped>
+.domains :deep(.el-input-group__prepend) {
+  box-sizing: border-box;
+  flex: 0 0 86px;
+  padding: 0 12px;
+}
 .domain-edit-input{flex:1 1 200px;min-width:0}.domain-row>.el-select{width:100%}
 .domains{display:grid;gap:14px;width:510px;max-width:100%}.domain-row{display:flex;align-items:center;gap:12px;min-height:44px;flex-wrap:wrap}.domain-row>.el-checkbox{flex-shrink:0;margin-right:0}.domain-help{font-size:12px;color:#86909c}.domain-add{width:100%;color:#0052d9}.domain-form,.domain-https{display:grid;gap:14px}.domain-entry{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.domain-entry>.el-input{flex:1 1 240px;min-width:0}.domain-entry>.el-checkbox{flex-shrink:0;margin-right:0}.domain-confirm{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;background:#fff7e6}
 </style>
