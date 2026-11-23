@@ -23,7 +23,7 @@ export function resolveSiteDirectory(application, appGroup) {
       if (!volume?.persistentVolumeClaim?.claimName || mount.subPathExpr || !mount.mountPath?.startsWith('/')) continue
       const subPath = (mount.subPath || '').replace(/^\/+|\/+$/g, '')
       if (subPath.split('/').includes('..')) continue
-      if (subPath !== `nginx-web-dir/${release}`) continue
+      if (subPath !== `www/server/${release}/wwwroot`) continue
       candidates.push({ containerName: container.name, path: mount.mountPath.replace(/\/+$/, '') || '/',
         pvcName: volume.persistentVolumeClaim.claimName, subPath })
     }

@@ -305,7 +305,7 @@ export default {
         annotations[ROOTFS_ANNOTATION] = JSON.stringify(entries.map(entry => ({
           ...entry,
           path: entry.name === this.containerName
-            ? `www/server/${this.appGroupName()}/${this.applicationName()}-${version}/system`
+            ? `www/server/${this.appGroupName()}/system/${version}`
             : entry.path
         })))
       } catch {
@@ -375,16 +375,17 @@ export default {
     },
     async cleanupOldRootfs(oldEntries, newAnnotations, deployment) {
       const newPaths = new Set(this.rootfsPaths(newAnnotations))
+      const prefix = `www/server/${this.appGroupName()}/system/`
       const staleEntries = oldEntries.filter(entry =>
-        !newPaths.has(entry.path)
-        && entry.volumeName
-        && /^www\/server\/(?:[A-Za-z0-9._-]+\/)?[A-Za-z0-9._-]+\/system$/.test(entry.path)
+        entry.name === this.containerName && !newPaths.has(entry.path)
+        && entry.volumeName && entry.path.startsWith(prefix)
+        && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(entry.path.slice(prefix.length))
       )
       if (!staleEntries.length) return
 
       const entriesByVolume = new Map()
       staleEntries.forEach(entry => {
-        const directory = entry.path.replace(/\/system$/, '')
+        const directory = entry.path
         const directories = entriesByVolume.get(entry.volumeName) || new Set()
         directories.add(directory)
         entriesByVolume.set(entry.volumeName, directories)

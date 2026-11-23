@@ -154,10 +154,10 @@ imagePullPolicy: {{ .Values.placeholderImage.pullPolicy | default "IfNotPresent"
 volumeMounts:
   - mountPath: {{.Values.global.NGINX_DIR}}
     name: site-storage
-    subPath: {{ printf "nginx-dir/%s" $directory | quote }}
+    subPath: {{ printf "www/server/%s/nginx" $directory | quote }}
   - mountPath: {{ .Values.global.NGINX_WEB_DIR | quote }}
     name: site-storage
-    subPath: {{ printf "nginx-web-dir/%s" $directory | quote }}
+    subPath: {{ printf "www/server/%s/wwwroot" $directory | quote }}
 resources:
   {{- toYaml .Values.resources | nindent 2 }}
 {{- end -}}
