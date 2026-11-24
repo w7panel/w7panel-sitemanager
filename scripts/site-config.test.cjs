@@ -25,7 +25,7 @@ const { requiresFastcgi } = load('utils/site-http.js')
 const { startupDraft, resolveStartup } = load('utils/runtime-config.js')
 const group = { apiVersion: 'w7panel.w7.com/v1alpha1', metadata: { name: 'site', uid: 'group-uid', annotations: { 'w7.cc/default-domain': 'https://site.example.com' } } }
 const app = () => ({ metadata: { name: 'site', namespace: 'tenant' }, spec: { template: { spec: { containers: [
-  { name: 'sidecar', image: 'helper', volumeMounts: [] }, { name: 'web', image: 'node:22', volumeMounts: [{ name: 'data', subPath: 'www/server/site/wwwroot', mountPath: '/www/wwwroot' }] }
+  { name: 'sidecar', image: 'helper', volumeMounts: [] }, { name: 'web', image: 'node:22', volumeMounts: [{ name: 'data', subPath: 'www/site/wwwroot', mountPath: '/www/wwwroot' }] }
 ], volumes: [{ name: 'data', persistentVolumeClaim: { claimName: 'site-data' } }] } } } })
 test('legacy and current routes resolve to the same site workspace', () => {
   for (const [input, expected] of [['#/', '/site/basic'], ['#/version', '/site/basic'], ['/nginx', '/site/gateway'], ['https://host/tool/#/files', '/site/files'], ['#/site/files', '/site/files'], ['#/site/terminal', '/site/terminal'], ['#/site/logs', '/site/logs'], ['/environment', '/environment']]) assert.equal(resolveSiteRoute(input), expected)

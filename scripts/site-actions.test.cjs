@@ -740,7 +740,7 @@ test('gateway file writes preserve literal content, reject changed files and res
 
 test('loading site context reads a domain changed in the panel and keeps release-based storage', async () => {
   const app = { metadata: { name: 'site' }, spec: { template: { spec: {
-    containers: [{ name: 'web', volumeMounts: [{ name: 'site-storage', subPath: 'www/server/site/wwwroot', mountPath: '/www/wwwroot' }] }],
+    containers: [{ name: 'web', volumeMounts: [{ name: 'site-storage', subPath: 'www/site/wwwroot', mountPath: '/www/wwwroot' }] }],
     volumes: [{ name: 'site-storage', persistentVolumeClaim: { claimName: 'shared' } }]
   } } } }
   const group = { metadata: { name: 'site', annotations: { 'w7.cc/default-domain': 'https://old.example.com' } }, status: { items: [{ kind: 'Deployment', name: 'site' }] } }
@@ -754,7 +754,7 @@ test('loading site context reads a domain changed in the panel and keeps release
   const { loadSiteContext } = loader(api)('utils/site-context.js')
   const context = await loadSiteContext()
   assert.equal(context.hostname, 'panel-change.example.com')
-  assert.equal(context.directory.subPath, 'www/server/site/wwwroot')
+  assert.equal(context.directory.subPath, 'www/site/wwwroot')
 })
 
 
@@ -834,11 +834,11 @@ test('runtime rootfs follows the shared system directory and retains other conta
   const component = loader({}, { 'element-plus': { ElMessageBox: {} } })('views/runtime-config.vue').default
   const ctx = { ...component.methods, appGroupName: () => 'site', containerName: 'php' }
   const annotations = { 'sysbox/rootfs-rw-layer': JSON.stringify([
-    { name: 'php', volumeName: 'site-storage', path: 'www/server/site/system/8.2' },
+    { name: 'php', volumeName: 'site-storage', path: 'www/site/server/system/8.2' },
     { name: 'helper', volumeName: 'site-storage', path: 'helper/rootfs' }
   ]) }
   const entries = JSON.parse(ctx.updateRootfsPath(annotations, '8.3')['sysbox/rootfs-rw-layer'])
-  assert.equal(entries[0].path, 'www/server/site/system/8.3')
+  assert.equal(entries[0].path, 'www/site/server/system/8.3')
   assert.equal(entries[1].path, 'helper/rootfs')
 })
 
@@ -848,15 +848,15 @@ test('rootfs cleanup deletes only the selected container old version within its 
   const component = loader(api, { 'element-plus': { ElMessageBox: {} } })('views/runtime-config.vue').default
   const ctx = { ...component.methods, appGroupName: () => 'site', containerName: 'php', workloadName: 'site', waitForCleanupJob: async () => {} }
   const entry = (path, name = 'php') => ({ name, path, volumeName: 'site-storage' })
-  const annotations = { 'sysbox/rootfs-rw-layer': JSON.stringify([entry('www/server/site/system/8.3')]) }
+  const annotations = { 'sysbox/rootfs-rw-layer': JSON.stringify([entry('www/site/server/system/8.3')]) }
   await ctx.cleanupOldRootfs([
-    entry('www/server/site/system/8.2'), entry('www/server/site/system/8.3'),
-    entry('www/server/another-site/system/8.2'), entry('www/server/site/system/8.1', 'helper'),
-    entry('www/server/site/system/..'), entry('www/server/site/system/8.2/nested'),
+    entry('www/site/server/system/8.2'), entry('www/site/server/system/8.3'),
+    entry('www/another-site/server/system/8.2'), entry('www/site/server/system/8.1', 'helper'),
+    entry('www/site/server/system/..'), entry('www/site/server/system/8.2/nested'),
     entry('www/server/site/php-8.0/system')
   ], annotations, { spec: { template: { spec: { volumes: [{ name: 'site-storage', persistentVolumeClaim: { claimName: 'site-pvc' } }] } } } })
   assert(job)
   const command = job.spec.template.spec.containers[0].args[0]
-  assert.equal(command, "set -eu\nrm -rf -- '/www/server/www/server/site/system/8.2'")
+  assert.equal(command, "set -eu\nrm -rf -- '/www/server/www/site/server/system/8.2'")
   assert.equal(job.spec.template.spec.volumes[0].persistentVolumeClaim.claimName, 'site-pvc')
 })
